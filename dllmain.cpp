@@ -155,7 +155,11 @@ void setupHook() {
 	fineAimIndex = GameConfig::GetValue("Index", "fineAim", ZOOM_MID_INDEX);
 	patchJmp((void*)0x0049A4CB, HookedRepMovsd);
 }
-
+void safeconfig() {
+	GameConfig::SetValue("Index", "onfoot", onfootIndex);
+	GameConfig::SetValue("Index", "inVehicle", inVehicleIndex);
+	GameConfig::SetValue("Index", "fineAim", fineAimIndex);
+}
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved) {
     switch (dwReason) {
     case DLL_PROCESS_ATTACH:
@@ -163,6 +167,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved) {
         setupHook();
         break;
     case DLL_PROCESS_DETACH:
+		safeconfig();
+		FreeLibraryAndExitThread(hModule, TRUE);
         break;
     case DLL_THREAD_ATTACH:
         break;
