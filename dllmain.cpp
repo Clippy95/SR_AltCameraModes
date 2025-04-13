@@ -6,7 +6,14 @@
 
 #pragma comment(lib, "libMinHook.x86.lib")
 
+#include <chrono> 
+
+
 static float EditedCameraPosition = 0.f;
+static std::chrono::steady_clock::time_point TimerStart; // Start time of the timer
+static const std::chrono::seconds InterpolationDuration(2); // Interpolation duration (2 seconds)
+static bool IsTimerActive = false; // Flag to indicate if the timer is active
+
 static int onfootIndex = 2; // Default index in the array (0 position)
 static int inVehicleIndex = 2;
 static int fineAimIndex = 2;
@@ -21,15 +28,12 @@ float getDeltaTime() {
 }
 
 bool inline isplayerstatus(uint8_t status) {
-    if (*(BYTE*)0x00E9A5BC == status)
-        return true;
-    else return false;
-
+    return (*(BYTE*)0x00E9A5BC == status);
 }
+
 uint8_t inline static playerstatus() {
     return *(BYTE*)0x00E9A5BC;
 }
-
 
 enum playerstatus {
     vehicle = 3,
@@ -39,36 +43,51 @@ enum playerstatus {
     sniper = 9,
     fineaimcrouch = 16,
     fineaim = 17,
-
-
 };
+
 float OriginalCameraPosition;
+
+bool IsInterpolationActive() {
+    if (!IsTimerActive)
+        return false;
+
+    auto elapsed = std::chrono::steady_clock::now() - TimerStart;
+    if (elapsed >= InterpolationDuration) {
+        IsTimerActive = false;
+        return false;
+    }
+    return true;
+}
+
+void ActivateInterpolationTimer() {
+    TimerStart = std::chrono::steady_clock::now();
+    IsTimerActive = true;
+}
+
 void EditCameraPosition(float newzoom) {
     OriginalCameraPosition = *(float*)0x00E9A654;
-    float smoothingfactor = 5.f;
-    if (EditedCameraPosition == 0.f)
-        EditedCameraPosition = OriginalCameraPosition;
 
-
-    float targetPosition = OriginalCameraPosition + newzoom;
     if (OriginalCameraPosition <= 1.f) {
         EditedCameraPosition = OriginalCameraPosition;
         return;
     }
-    if (EditedCameraPosition != targetPosition && !(isplayerstatus(playerstatus::sniper))) {
-        float deltaTime = getDeltaTime();
+
+    if (IsInterpolationActive()) {
+        float targetPosition = OriginalCameraPosition + newzoom;
+        float smoothingfactor = 5.f;
+
         if (isplayerstatus(playerstatus::fineaimcrouch) || isplayerstatus(playerstatus::fineaim)) {
             if (newzoom != 0)
-             targetPosition = OriginalCameraPosition + (newzoom / 5.f);
-            smoothingfactor = smoothingfactor * 2.f;
+                targetPosition = OriginalCameraPosition + (newzoom / 5.f);
+            smoothingfactor *= 2.f;
         }
-        // Interpolate towards the target position
-        EditedCameraPosition += (targetPosition - EditedCameraPosition) * (deltaTime * smoothingfactor);
-    }else
-        EditedCameraPosition = OriginalCameraPosition;
 
+        EditedCameraPosition += (targetPosition - EditedCameraPosition) * (getDeltaTime() * smoothingfactor);
+    }
+    else {
+        EditedCameraPosition = OriginalCameraPosition + newzoom;
+    }
 }
-
 
 void HandleKeyPress() {
     static bool keyPressed = false;
@@ -86,23 +105,26 @@ void HandleKeyPress() {
     case playerstatus::plane:
         activeIndex = &inVehicleIndex;
         break;
-    default: // Default to on-foot status
+    default:
         activeIndex = &onfootIndex;
         break;
     }
 
-    if (GetAsyncKeyState('B') & 0x8000) {
-        if (!keyPressed) {
-            keyPressed = true;
+    if (*(uint8_t*)0x252A406) {
+        if (GetAsyncKeyState('B') & 0x8000) {
+            if (!keyPressed) {
+                keyPressed = true;
 
-            *activeIndex = (*activeIndex + 1) % cameraAdjustments.size();
-            *(bool*)(0x252740E) = 1;
+                *activeIndex = (*activeIndex + 1) % cameraAdjustments.size();
+                *(bool*)(0x252740E) = 1;
+
+                ActivateInterpolationTimer();
+            }
+        }
+        else {
+            keyPressed = false;
         }
     }
-    else {
-        keyPressed = false;
-    }
-
 
     EditCameraPosition(cameraAdjustments[*activeIndex]);
 }
@@ -111,11 +133,11 @@ void PerformCustomMemoryCopy() {
     HandleKeyPress();
     uint8_t* src = reinterpret_cast<uint8_t*>(0x00E9A638);
     uint8_t* dest = reinterpret_cast<uint8_t*>(0x00E9A60C);
-    size_t size = 0x2C; // 44 bytes
+    size_t size = 0x2C;
 
     for (size_t i = 0; i < size; ++i) {
-        if (reinterpret_cast<uintptr_t>(src) == 0x00E9A654 && OriginalCameraPosition > 1.f) { // stupid fucking hack
-            src = reinterpret_cast<uint8_t*>(&EditedCameraPosition); // Redirect src to new address
+        if (reinterpret_cast<uintptr_t>(src) == 0x00E9A654 && OriginalCameraPosition > 1.f) {
+            src = reinterpret_cast<uint8_t*>(&EditedCameraPosition);
         }
         dest[i] = *src++;
     }
@@ -135,10 +157,11 @@ void __declspec(naked) HookedRepMovsd() {
         popfd
         popad
 
-        mov eax, 0x0049A4DC 
+        mov eax, 0x0049A4DC
         jmp eax
     }
 }
+
 typedef void(__stdcall* RepMovsdFunc)();
 RepMovsdFunc originalRepMovsd = nullptr;
 
@@ -174,4 +197,3 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved) {
     }
     return TRUE;
 }
-
