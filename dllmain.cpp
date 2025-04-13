@@ -3,7 +3,7 @@
 #include "MinHook.h"
 #include <cstdint>
 #include <vector>
-
+#include "GameConfig.h"
 #pragma comment(lib, "libMinHook.x86.lib")
 
 #include <chrono> 
@@ -60,9 +60,10 @@ float getDeltaTime() {
 
 float EditedZoomMod = 0.f;
 float zoom_values[] = { -2.f, -1.f, 0.f, 1.f, 2.f };
-BYTE onfootIndex = 2;
-BYTE inVehicleIndex = 2;
-BYTE fineAimIndex = 2;
+#define ZOOM_MID_INDEX (sizeof(zoom_values) / sizeof(zoom_values[0]) / 2)
+BYTE onfootIndex = ZOOM_MID_INDEX;
+BYTE inVehicleIndex = ZOOM_MID_INDEX;
+BYTE fineAimIndex = ZOOM_MID_INDEX;
 void PerformCustomMemoryCopy() {
 	UpdateKeys();
 		enum status : BYTE {
@@ -148,6 +149,10 @@ void __declspec(naked) HookedRepMovsd() {
 }
 
 void setupHook() {
+	GameConfig::Initialize();
+	onfootIndex = GameConfig::GetValue("Index", "onfoot", ZOOM_MID_INDEX);
+	inVehicleIndex = GameConfig::GetValue("Index", "inVehicle", ZOOM_MID_INDEX);
+	fineAimIndex = GameConfig::GetValue("Index", "fineAim", ZOOM_MID_INDEX);
 	patchJmp((void*)0x0049A4CB, HookedRepMovsd);
 }
 
