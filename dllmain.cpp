@@ -116,7 +116,7 @@ int vehicle_get_num_passengers(uintptr_t vehicle_pointer) {
 	return num_passengers;
 
 }
-
+// not inlined, address: 0x	w00AB51B0 for call but cba for an asm caller
 bool isBike(uintptr_t vehicle_pointer) {
 	return vehicle_pointer && *(uintptr_t*)(*(uintptr_t*)(vehicle_pointer + 0x84E4) + 0x9C) == 1;
 }
@@ -129,7 +129,7 @@ char keySwitch = 'B';
 BYTE onfootIndex = ZOOM_MID_INDEX;
 BYTE inVehicleIndex = ZOOM_MID_INDEX;
 BYTE fineAimIndex = ZOOM_MID_INDEX;
-void PerformCustomMemoryCopy() {
+void cf_lookat_position_process_midhook() {
 	UpdateKeys();
 	//printf("is Bike: 0x%X \n", isBike(FindPlayersVehicle()));
 	enum camera_free_submodes : BYTE
@@ -218,7 +218,6 @@ void PerformCustomMemoryCopy() {
 		}
 		else
 			heightIncreaseMult = 0.f;
-		printf("heightIncreaseMult 0x%X \n", &heightIncreaseMult);
 		EditedZoomMod = lerp(EditedZoomMod, target, t);
 		if (IsKeyPressed(keySwitch, false)) {
 			*activeIndex = (*activeIndex + 4) % 5;
@@ -241,13 +240,13 @@ void PerformCustomMemoryCopy() {
 		}
 	}
 
-void __declspec(naked) HookedRepMovsd() {
+void __declspec(naked) cf_lookat_position_process_midhook_ASM() {
     __asm {
         pushad
         pushfd
     }
 
-	PerformCustomMemoryCopy();
+	cf_lookat_position_process_midhook();
     
 
     __asm {
@@ -285,7 +284,7 @@ void setupHook() {
 	inVehicleIndex = GameConfig::GetValue("Index", "inVehicle", ZOOM_MID_INDEX);
 	fineAimIndex = GameConfig::GetValue("Index", "fineAim", ZOOM_MID_INDEX);
 	loadKeys();
-	patchJmp((void*)0x0049A4CB, HookedRepMovsd);
+	patchJmp((void*)0x0049A4CB, cf_lookat_position_process_midhook_ASM);
 }
 void safeconfig() {
 	GameConfig::SetValue("Index", "onfoot", onfootIndex);
@@ -297,6 +296,13 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 {
 	// Funny Tervel hooking Sleep, BlingMenu settings get added after 2450ms
 	SleepEx(1499, 0);
+	BlingMenuAddFunc("ClippyCamera",
+#if !_DEBUG
+		"version: r3"
+#else
+		"version: r3 : DEBUG BUILD"
+#endif
+		,NULL);
 	BlingMenuAddBool("ClippyCamera", "GTA:SA bikes cam raise with passenger", &m_GTASA_heightIncreaseMult_enabled, nullptr);
 	//BlingMenuAddFunc("ClippyCamera", "Reload binds from config", &loadKeys);
 #if _DEBUG
