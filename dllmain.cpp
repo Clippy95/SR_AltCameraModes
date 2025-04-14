@@ -59,33 +59,53 @@ float getDeltaTime() {
 }
 
 float EditedZoomMod = 0.f;
-float zoom_values[] = { -2.f, -1.f, 0.f, 1.f, 2.f };
+float zoom_values[] = { 2.f, -1.f, 0.f, 1.f, 2.f };
 #define ZOOM_MID_INDEX (sizeof(zoom_values) / sizeof(zoom_values[0]) / 2)
 BYTE onfootIndex = ZOOM_MID_INDEX;
 BYTE inVehicleIndex = ZOOM_MID_INDEX;
 BYTE fineAimIndex = ZOOM_MID_INDEX;
 void PerformCustomMemoryCopy() {
 	UpdateKeys();
-		enum status : BYTE {
-			vehicle = 3,
-			boat = 5,
-			helicopter = 6,
-			plane = 9,
-			sniper = 9,
-			fineaimcrouch = 16,
-			fineaim = 17,
-		};
+	enum camera_free_submodes : BYTE
+	{
+		CFSM_EXTERIOR_CLOSE = 0x0,
+		CFSM_INTERIOR_CLOSE = 0x1,
+		CFSM_INTERIOR_SPRINT = 0x2,
+		CFSM_VEHICLE_DRIVER = 0x3,
+		CFSM_VEHICLE_DRIVER_ALT = 0x4,
+		CFSM_WATERCRAFT_DRIVER = 0x5,
+		CFSM_HELICOPTER_DRIVER = 0x6,
+		CFSM_HELICOPTER_FINE_AIM = 0x7,
+		CFSM_AIRPLANE_DRIVER = 0x8,
+		CFSM_ZOOM = 0x9,
+		CFSM_SWIMMING = 0xA,
+		CFSM_SPECTATOR = 0xB,
+		CFSM_FENCE = 0xC,
+		CFSM_RAGDOLL = 0xD,
+		CFSM_FALLING = 0xE,
+		CFSM_LEAPING = 0xF,
+		CFSM_FINE_AIM = 0x10,
+		CFSM_FINE_AIM_CROUCH = 0x11,
+		CFSM_MELEE_LOCK = 0x12,
+		CFSM_FINE_AIM_VEHICLE = 0x13,
+		CFSM_FREEFALL = 0x14,
+		CFSM_PARACHUTE = 0x15,
+		CFSM_HUMAN_SHIELD = 0x16,
+		CFSM_SPRINT = 0x17,
+	};
 		BYTE* activeIndex = &onfootIndex;
-		status player_status = *(status*)0x00E9A5BC;
+		camera_free_submodes player_status = *(camera_free_submodes*)0x00E9A5BC;
 		switch (player_status) {
-		case vehicle:
-		case boat:
-		case helicopter:
-		case plane:
+		case CFSM_VEHICLE_DRIVER:
+		case CFSM_WATERCRAFT_DRIVER:
+		case CFSM_HELICOPTER_DRIVER:
+		case CFSM_AIRPLANE_DRIVER:
+		case CFSM_VEHICLE_DRIVER_ALT: // a what now?
 			activeIndex = &inVehicleIndex;
 			break;
-		case fineaimcrouch:
-		case fineaim:
+		case CFSM_FINE_AIM_CROUCH:
+		case CFSM_FINE_AIM:
+		case CFSM_HELICOPTER_FINE_AIM:
 			activeIndex = &fineAimIndex;
 			break;
 		default:
@@ -94,15 +114,15 @@ void PerformCustomMemoryCopy() {
 		}
 		float target = zoom_values[*activeIndex];
 		switch (player_status) {
-		case helicopter:
-		case plane:
-			target *= 4.f;
-			break;
-		case fineaimcrouch:
-		case fineaim:
-			if(target > 0.f)
-			target *= 0.35f;
-			break;
+		case CFSM_HELICOPTER_DRIVER:
+		case CFSM_AIRPLANE_DRIVER:
+			//target *= 4.f;
+			//break;
+		case CFSM_FINE_AIM_CROUCH:
+		case CFSM_FINE_AIM:
+			//if(target > 0.f)
+			//target *= 0.35f;
+			//break;
 		default:
 			break;
 		}
