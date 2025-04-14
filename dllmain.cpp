@@ -221,8 +221,11 @@ void cf_lookat_position_process_midhook() {
 
 		float t = speed * getDeltaTime();
 		if (t > 1.0f) t = 1.0f;
-
+		// Code from SACarCam by erorcun, 
+		// I assume this is original GTA:SA logic as it acts like it even here. 
+		// https://github.com/erorcun/SACarCam/blob/25a43fcaaf321d9d4969ab6f68fd65fa627ecac1/SACarCam/SACarCam.cpp#L393
 		if (m_GTASA_heightIncreaseMult_enabled && player_status == CFSM_VEHICLE_DRIVER && isBike(FindPlayersVehicle())) {
+			// This function might be overkill for this as bikes only have 2 seats so we can just check the handle of the second seat? either ways took me too long to figure this passenger out lol
 			if (vehicle_get_num_passengers(FindPlayersVehicle()) > 1) {
 				if (heightIncreaseMult < 1.0f) {
 					heightIncreaseMult = min(1.0f,  (0.02f * timestep()) + heightIncreaseMult);
@@ -230,6 +233,9 @@ void cf_lookat_position_process_midhook() {
 			}
 			else {
 				if (heightIncreaseMult > 0.0f) {
+					// SACarCam does 
+					// heightIncreaseMult = max(0.0f, heightIncreaseMult - timestep() * 0.02f);
+					// that won't work here for some reason, it'll just insta go to 0.f or break the camera.
 					heightIncreaseMult = max(0.0f, heightIncreaseMult - (0.02f * timestep()));
 				}
 			}
@@ -326,7 +332,7 @@ void setupHook() {
 	fineAimIndex = GameConfig::GetValue("Index", "fineAim", ZOOM_MID_INDEX);
 	loadKeys();
 	patchJmp((void*)0x0049A4CB, cf_lookat_position_process_midhook_ASM);
-	if(GameConfig::GetValue("EXPERIMENTAL","Halve_base_pitch_for_cars",0))
+	if(GameConfig::GetValue("EXPERIMENTAL","Halve_base_pitch_for_cars",0)) // this is probably in an xtbl somewhere (vehicles_cameras) for each vehicle?, and it acts weird on foot thus EXPERIMENTAL, probably better to change in xtbl
 	patchJmp((void*)0x00499AD2, cf_submode_params_set_by_lerp_midhookASM);
 }
 void safeconfig() {
