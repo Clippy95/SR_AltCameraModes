@@ -7,10 +7,28 @@
 #pragma comment(lib, "libMinHook.x86.lib")
 #include "include\BlingMenu_public.h"
 #include <chrono> 
-#if _DEBUG
+
 #include <string>
+
+#if _DEBUG
+void OpenConsole()
+{
+
+	AllocConsole();
+
+	FILE* fp;
+	freopen_s(&fp, "CONOUT$", "w", stdout);
+	freopen_s(&fp, "CONOUT$", "w", stderr);
+	freopen_s(&fp, "CONIN$", "r", stdin);
+
+	SetConsoleTitleA("Debug Console");
+
+}
+
 #endif
 bool m_GTASA_heightIncreaseMult_enabled = true;
+//BYTE switch_shoulder = false;
+bool m_halved_base_pitch = true;
 void patchJmp(void* addr, void* func) {
 	DWORD oldProtect;
 
@@ -121,6 +139,34 @@ bool isBike(uintptr_t vehicle_pointer) {
 	return vehicle_pointer && *(uintptr_t*)(*(uintptr_t*)(vehicle_pointer + 0x84E4) + 0x9C) == 1;
 }
 
+enum camera_free_submodes : BYTE
+{
+	CFSM_EXTERIOR_CLOSE = 0x0,
+	CFSM_INTERIOR_CLOSE = 0x1,
+	CFSM_INTERIOR_SPRINT = 0x2,
+	CFSM_VEHICLE_DRIVER = 0x3,
+	CFSM_VEHICLE_DRIVER_ALT = 0x4,
+	CFSM_WATERCRAFT_DRIVER = 0x5,
+	CFSM_HELICOPTER_DRIVER = 0x6,
+	CFSM_HELICOPTER_FINE_AIM = 0x7,
+	CFSM_AIRPLANE_DRIVER = 0x8,
+	CFSM_ZOOM = 0x9,
+	CFSM_SWIMMING = 0xA,
+	CFSM_SPECTATOR = 0xB,
+	CFSM_FENCE = 0xC,
+	CFSM_RAGDOLL = 0xD,
+	CFSM_FALLING = 0xE,
+	CFSM_LEAPING = 0xF,
+	CFSM_FINE_AIM = 0x10,
+	CFSM_FINE_AIM_CROUCH = 0x11,
+	CFSM_MELEE_LOCK = 0x12,
+	CFSM_FINE_AIM_VEHICLE = 0x13,
+	CFSM_FREEFALL = 0x14,
+	CFSM_PARACHUTE = 0x15,
+	CFSM_HUMAN_SHIELD = 0x16,
+	CFSM_SPRINT = 0x17,
+};
+
 float EditedZoomMod = 0.f;
 float zoom_values[] = { -2.f, -1.f, 0.f, 1.f, 2.f };
 float heightIncreaseMult = 0.f;
@@ -132,33 +178,6 @@ BYTE fineAimIndex = ZOOM_MID_INDEX;
 void cf_lookat_position_process_midhook() {
 	UpdateKeys();
 	//printf("is Bike: 0x%X \n", isBike(FindPlayersVehicle()));
-	enum camera_free_submodes : BYTE
-	{
-		CFSM_EXTERIOR_CLOSE = 0x0,
-		CFSM_INTERIOR_CLOSE = 0x1,
-		CFSM_INTERIOR_SPRINT = 0x2,
-		CFSM_VEHICLE_DRIVER = 0x3,
-		CFSM_VEHICLE_DRIVER_ALT = 0x4,
-		CFSM_WATERCRAFT_DRIVER = 0x5,
-		CFSM_HELICOPTER_DRIVER = 0x6,
-		CFSM_HELICOPTER_FINE_AIM = 0x7,
-		CFSM_AIRPLANE_DRIVER = 0x8,
-		CFSM_ZOOM = 0x9,
-		CFSM_SWIMMING = 0xA,
-		CFSM_SPECTATOR = 0xB,
-		CFSM_FENCE = 0xC,
-		CFSM_RAGDOLL = 0xD,
-		CFSM_FALLING = 0xE,
-		CFSM_LEAPING = 0xF,
-		CFSM_FINE_AIM = 0x10,
-		CFSM_FINE_AIM_CROUCH = 0x11,
-		CFSM_MELEE_LOCK = 0x12,
-		CFSM_FINE_AIM_VEHICLE = 0x13,
-		CFSM_FREEFALL = 0x14,
-		CFSM_PARACHUTE = 0x15,
-		CFSM_HUMAN_SHIELD = 0x16,
-		CFSM_SPRINT = 0x17,
-	};
 		BYTE* activeIndex = &onfootIndex;
 		camera_free_submodes player_status = *(camera_free_submodes*)0x00E9A5BC;
 		switch (player_status) {
@@ -227,11 +246,11 @@ void cf_lookat_position_process_midhook() {
 		size_t size = 0x2C / 4;
 
 		for (size_t i = 0; i < size; ++i) {
-			if (reinterpret_cast<uintptr_t>(src) == 0x00E9A654) {
+			if (reinterpret_cast<uintptr_t>(src) == 0x00E9A654) { // camera_free_base_distance
 				dest[i] = (*(float*)0x00E9A654) * powf(2.f, EditedZoomMod / 2.0f);
 				*src++;
 			}
-			else if (m_GTASA_heightIncreaseMult_enabled && reinterpret_cast<uintptr_t>(src) == 0x00E9A63C) {
+			else if (m_GTASA_heightIncreaseMult_enabled && reinterpret_cast<uintptr_t>(src) == 0x00E9A63C) { // camera_free_look_at_offset.y \\ in GTA height is Z?
 				dest[i] = (*(float*)0x00E9A63C) + (0.4f * heightIncreaseMult);
 				*src++;
 			}
@@ -257,34 +276,55 @@ void __declspec(naked) cf_lookat_position_process_midhook_ASM() {
         jmp eax
     }
 }
-#if _DEBUG
-void OpenConsole()
-{
+void cf_submode_params_set_by_lerp_midhook() {
+	camera_free_submodes player_status = *(camera_free_submodes*)0x00E9A5BC;
+	switch (player_status) {
+	case CFSM_VEHICLE_DRIVER:
+	case CFSM_WATERCRAFT_DRIVER:
+	case CFSM_VEHICLE_DRIVER_ALT: // a what now?
+		*(float*)0x00E9A650 /= 2.f;
+		break;
+	default:
+		break;
+	}
 
-	AllocConsole();
-
-	FILE* fp;
-	freopen_s(&fp, "CONOUT$", "w", stdout);
-	freopen_s(&fp, "CONOUT$", "w", stderr);
-	freopen_s(&fp, "CONIN$", "r", stdin);
-
-	SetConsoleTitleA("Debug Console");
-
+	
 }
+void __declspec(naked) cf_submode_params_set_by_lerp_midhookASM() {
+	static int jmp_continue = 0x00499AD8;
+	__asm {
+		fstp dword ptr[edx + 0x18]
+		fld dword ptr[ecx + 0x1C]
+		pushad
+		pushfd
+	}
 
-#endif
+	cf_submode_params_set_by_lerp_midhook();
+
+
+	__asm {
+		popfd
+		popad
+
+		jmp jmp_continue
+	}
+}
 __declspec(noinline) void loadKeys() {
 	keySwitch = GameConfig::GetValue("Binds", "ChangeCameraZoom", 'B');
 }
 void setupHook() {
-	patchDWord((void*)(0x00499B9F + 1), 0x00E9A60C);
+	patchDWord((void*)(0x00499B9F + 1), 0x00E9A60C); // so bike height works.
+#if _DEBUG
 	OpenConsole();
+#endif
 	GameConfig::Initialize();
 	onfootIndex = GameConfig::GetValue("Index", "onfoot", ZOOM_MID_INDEX);
 	inVehicleIndex = GameConfig::GetValue("Index", "inVehicle", ZOOM_MID_INDEX);
 	fineAimIndex = GameConfig::GetValue("Index", "fineAim", ZOOM_MID_INDEX);
 	loadKeys();
 	patchJmp((void*)0x0049A4CB, cf_lookat_position_process_midhook_ASM);
+	if(GameConfig::GetValue("EXPERIMENTAL","Halve_base_pitch_for_cars",0))
+	patchJmp((void*)0x00499AD2, cf_submode_params_set_by_lerp_midhookASM);
 }
 void safeconfig() {
 	GameConfig::SetValue("Index", "onfoot", onfootIndex);
@@ -295,7 +335,7 @@ void safeconfig() {
 DWORD WINAPI LateBM(LPVOID lpParameter)
 {
 	// Funny Tervel hooking Sleep, BlingMenu settings get added after 2450ms
-	SleepEx(1499, 0);
+	SleepEx(1200, 0);
 	BlingMenuAddFunc("ClippyCamera",
 #if !_DEBUG
 		"version: r3"
@@ -305,7 +345,7 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 		,NULL);
 	BlingMenuAddBool("ClippyCamera", "GTA:SA bikes cam raise with passenger", &m_GTASA_heightIncreaseMult_enabled, nullptr);
 	//BlingMenuAddFunc("ClippyCamera", "Reload binds from config", &loadKeys);
-#if _DEBUG
+
 	//BlingMenuAddInt8("ClippyCamera", "Index to mod", (signed char*)&mod_index, &DEBUG_setIndexPointers, 1, 0, sizeof(zoom_values) / sizeof(zoom_values[0]));
 	//BlingMenuAddFloat("ClippyCamera", "value", ModifyValues, &DEBUG_setIndexPointers, 0.1f, -5.f, 5.f);
 	for (int i = 0; i < (sizeof(zoom_values) / sizeof(zoom_values[0])); i++) {
@@ -313,7 +353,7 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 		whatever = "Index [" + std::to_string(i) + "]";
 		BlingMenuAddFloat("ClippyCamera", whatever.c_str(), &zoom_values[i], NULL, 0.1f, -5.f, 5.f);
 	}
-#endif
+
 	return 0;
 }
 
