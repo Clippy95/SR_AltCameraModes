@@ -5,8 +5,11 @@
 #include <vector>
 #include "GameConfig.h"
 #pragma comment(lib, "libMinHook.x86.lib")
-
+#include "include\BlingMenu_public.h"
 #include <chrono> 
+#if _DEBUG
+#include <string>
+#endif
 bool m_GTASA_heightIncreaseMult_enabled = true;
 void patchJmp(void* addr, void* func) {
 	DWORD oldProtect;
@@ -119,7 +122,7 @@ bool isBike(uintptr_t vehicle_pointer) {
 }
 
 float EditedZoomMod = 0.f;
-float zoom_values[] = { 2.f, -1.f, 0.f, 1.f, 2.f };
+float zoom_values[] = { -2.f, -1.f, 0.f, 1.f, 2.f };
 float heightIncreaseMult = 0.f;
 char keySwitch = 'B';
 #define ZOOM_MID_INDEX (sizeof(zoom_values) / sizeof(zoom_values[0]) / 2)
@@ -201,7 +204,7 @@ void PerformCustomMemoryCopy() {
 		if (t > 1.0f) t = 1.0f;
 
 		// Update EditedZoomMod towards the target value
-		if (player_status == CFSM_VEHICLE_DRIVER && isBike(FindPlayersVehicle())) {
+		if (m_GTASA_heightIncreaseMult_enabled && player_status == CFSM_VEHICLE_DRIVER && isBike(FindPlayersVehicle())) {
 			if (vehicle_get_num_passengers(FindPlayersVehicle()) > 1) {
 				if (heightIncreaseMult < 1.0f) {
 					heightIncreaseMult = min(1.0f,  (0.02f * timestep()) + heightIncreaseMult);
@@ -229,7 +232,7 @@ void PerformCustomMemoryCopy() {
 				dest[i] = (*(float*)0x00E9A654) * powf(2.f, EditedZoomMod / 2.0f);
 				*src++;
 			}
-			else if (reinterpret_cast<uintptr_t>(src) == 0x00E9A63C && m_GTASA_heightIncreaseMult_enabled) {
+			else if (m_GTASA_heightIncreaseMult_enabled && reinterpret_cast<uintptr_t>(src) == 0x00E9A63C) {
 				dest[i] = (*(float*)0x00E9A63C) + (0.4f * heightIncreaseMult);
 				*src++;
 			}
@@ -255,6 +258,7 @@ void __declspec(naked) HookedRepMovsd() {
         jmp eax
     }
 }
+#if _DEBUG
 void OpenConsole()
 {
 
@@ -268,6 +272,11 @@ void OpenConsole()
 	SetConsoleTitleA("Debug Console");
 
 }
+
+#endif
+__declspec(noinline) void loadKeys() {
+	keySwitch = GameConfig::GetValue("Binds", "ChangeCameraZoom", 'B');
+}
 void setupHook() {
 	patchDWord((void*)(0x00499B9F + 1), 0x00E9A60C);
 	OpenConsole();
@@ -275,7 +284,7 @@ void setupHook() {
 	onfootIndex = GameConfig::GetValue("Index", "onfoot", ZOOM_MID_INDEX);
 	inVehicleIndex = GameConfig::GetValue("Index", "inVehicle", ZOOM_MID_INDEX);
 	fineAimIndex = GameConfig::GetValue("Index", "fineAim", ZOOM_MID_INDEX);
-	keySwitch = GameConfig::GetValue("Binds", "ChangeCameraZoom", 'B');
+	loadKeys();
 	patchJmp((void*)0x0049A4CB, HookedRepMovsd);
 }
 void safeconfig() {
@@ -283,11 +292,33 @@ void safeconfig() {
 	GameConfig::SetValue("Index", "inVehicle", inVehicleIndex);
 	GameConfig::SetValue("Index", "fineAim", fineAimIndex);
 }
+
+DWORD WINAPI LateBM(LPVOID lpParameter)
+{
+	// Funny Tervel hooking Sleep, BlingMenu settings get added after 2450ms
+	SleepEx(1499, 0);
+	BlingMenuAddBool("ClippyCamera", "GTA:SA bikes cam raise with passenger", &m_GTASA_heightIncreaseMult_enabled, nullptr);
+	//BlingMenuAddFunc("ClippyCamera", "Reload binds from config", &loadKeys);
+#if _DEBUG
+	//BlingMenuAddInt8("ClippyCamera", "Index to mod", (signed char*)&mod_index, &DEBUG_setIndexPointers, 1, 0, sizeof(zoom_values) / sizeof(zoom_values[0]));
+	//BlingMenuAddFloat("ClippyCamera", "value", ModifyValues, &DEBUG_setIndexPointers, 0.1f, -5.f, 5.f);
+	for (int i = 0; i < (sizeof(zoom_values) / sizeof(zoom_values[0])); i++) {
+		std::string whatever;
+		whatever = "Index [" + std::to_string(i) + "]";
+		BlingMenuAddFloat("ClippyCamera", whatever.c_str(), &zoom_values[i], NULL, 0.1f, -5.f, 5.f);
+	}
+#endif
+	return 0;
+}
+
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved) {
     switch (dwReason) {
     case DLL_PROCESS_ATTACH:
         DisableThreadLibraryCalls(hModule);
         setupHook();
+		if (BlingMenuLoad()) {
+			CreateThread(0, 0, LateBM, 0, 0, 0);
+		}
         break;
     case DLL_PROCESS_DETACH:
 		safeconfig();
