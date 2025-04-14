@@ -114,10 +114,16 @@ void PerformCustomMemoryCopy() {
 		}
 		float target = zoom_values[*activeIndex];
 		switch (player_status) {
+		case CFSM_VEHICLE_DRIVER:
+		case CFSM_WATERCRAFT_DRIVER:
 		case CFSM_HELICOPTER_DRIVER:
 		case CFSM_AIRPLANE_DRIVER:
-			//target *= 4.f;
-			//break;
+		case CFSM_VEHICLE_DRIVER_ALT: // a what now?
+			if (target < 0.f)
+				target *= 0.8f;
+			else
+				target *= 0.75f;
+			break;
 		case CFSM_FINE_AIM_CROUCH:
 		case CFSM_FINE_AIM:
 			//if(target > 0.f)
@@ -142,7 +148,7 @@ void PerformCustomMemoryCopy() {
 
 		for (size_t i = 0; i < size; ++i) {
 			if (reinterpret_cast<uintptr_t>(src) == 0x00E9A654) {
-				dest[i] = (*(float*)0x00E9A654) + EditedZoomMod;
+				dest[i] = (*(float*)0x00E9A654) * powf(2.f, EditedZoomMod / 2.0f);
 				*src++;
 			}
 			else
