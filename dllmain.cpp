@@ -168,7 +168,7 @@ enum camera_free_submodes : BYTE
 };
 
 float EditedZoomMod = 0.f;
-float zoom_values[] = { -2.f, -1.f, 0.f, 1.f, 2.f };
+float zoom_values[] = { 2.0f,-1.5f, -1.f, 0.f, 1.f, 1.5f,2.f };
 float heightIncreaseMult = 0.f;
 char keySwitch = 'B';
 #define ZOOM_MID_INDEX (sizeof(zoom_values) / sizeof(zoom_values[0]) / 2)
@@ -222,7 +222,6 @@ void cf_lookat_position_process_midhook() {
 		float t = speed * getDeltaTime();
 		if (t > 1.0f) t = 1.0f;
 
-		// Update EditedZoomMod towards the target value
 		if (m_GTASA_heightIncreaseMult_enabled && player_status == CFSM_VEHICLE_DRIVER && isBike(FindPlayersVehicle())) {
 			if (vehicle_get_num_passengers(FindPlayersVehicle()) > 1) {
 				if (heightIncreaseMult < 1.0f) {
@@ -313,7 +312,11 @@ __declspec(noinline) void loadKeys() {
 	keySwitch = GameConfig::GetValue("Binds", "ChangeCameraZoom", 'B');
 }
 void setupHook() {
-	patchDWord((void*)(0x00499B9F + 1), 0x00E9A60C); // so bike height works.
+	if (GameConfig::GetValue("Hooks", "Allow_for_GTASA_heightIncreaseMult", 1)) {
+		patchDWord((void*)(0x00499B9F + 1), 0x00E9A60C); // so bike height works.
+	}
+	else
+		m_GTASA_heightIncreaseMult_enabled = false;
 #if _DEBUG
 	OpenConsole();
 #endif
@@ -343,6 +346,7 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 		"version: r3 : DEBUG BUILD"
 #endif
 		,NULL);
+	if (GameConfig::GetValue("Hooks", "Allow_for_GTASA_heightIncreaseMult", 1))
 	BlingMenuAddBool("ClippyCamera", "GTA:SA bikes cam raise with passenger", &m_GTASA_heightIncreaseMult_enabled, nullptr);
 	//BlingMenuAddFunc("ClippyCamera", "Reload binds from config", &loadKeys);
 
