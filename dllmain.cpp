@@ -58,14 +58,61 @@ float getDeltaTime() {
     return elapsedMillis / 1000.0f;
 }
 
+typedef uintptr_t(__fastcall* GetPointerT)(uintptr_t VehiclePointer);
+GetPointerT GetPointer = (GetPointerT)0x00AE28F0;
+
+uintptr_t FindPlayer() {
+	return *(uintptr_t*)(0x21703D4);
+}
+
+uintptr_t FindPlayersVehicle() {
+	if (!FindPlayer())
+		return NULL;
+	auto players_vehicle_handle = FindPlayer() + 0xD74;
+	if (players_vehicle_handle) {
+		uintptr_t value = *(uintptr_t*)players_vehicle_handle;
+		if (value) {
+			return GetPointer(value);
+		}
+	}
+	return NULL;
+}
+
+// Inlined function.
+int vehicle_get_num_seats(uintptr_t vehicle_pointer) {
+	if (!vehicle_pointer)
+		return 0;
+	if (*(bool*)(vehicle_pointer + 0x84D8)) // vp->m_srdi.m_loaded
+		return *(int*)(vehicle_pointer + 0x6CE8); // p_m_srdi->m_data.m_num_seats
+}
+// what no symbols does to a mf, this probably isn't an inlined function but I couldn't find it, so let's recreate it.
+int vehicle_get_num_passengers(uintptr_t vehicle_pointer) {
+	if (!vehicle_pointer)
+		return 0;
+	int num_passengers = 0;
+	for (int i = 0; i < vehicle_get_num_seats(vehicle_pointer); ++i) {
+		int character_handle = *(int*)(vehicle_pointer + 0x8ABC + (i * 0x24));
+		if (character_handle)
+			++num_passengers;
+	}
+	return num_passengers;
+
+}
+
+bool isBike(uintptr_t vehicle_pointer) {
+	return vehicle_pointer && *(uintptr_t*)(*(uintptr_t*)(vehicle_pointer + 0x84E4) + 0x9C) == 1;
+}
+
 float EditedZoomMod = 0.f;
 float zoom_values[] = { 2.f, -1.f, 0.f, 1.f, 2.f };
+float heightIncreaseMult = 0.f;
 #define ZOOM_MID_INDEX (sizeof(zoom_values) / sizeof(zoom_values[0]) / 2)
 BYTE onfootIndex = ZOOM_MID_INDEX;
 BYTE inVehicleIndex = ZOOM_MID_INDEX;
 BYTE fineAimIndex = ZOOM_MID_INDEX;
 void PerformCustomMemoryCopy() {
 	UpdateKeys();
+	printf("is Bike: 0x%X \n", isBike(FindPlayersVehicle()));
 	enum camera_free_submodes : BYTE
 	{
 		CFSM_EXTERIOR_CLOSE = 0x0,
@@ -151,6 +198,10 @@ void PerformCustomMemoryCopy() {
 				dest[i] = (*(float*)0x00E9A654) * powf(2.f, EditedZoomMod / 2.0f);
 				*src++;
 			}
+			else if (reinterpret_cast<uintptr_t>(src) == 0x00E9A63C) {
+				dest[i] = (*(float*)0x00E9A63C) + (0.4f * heightIncreaseMult);
+				*src++;
+			}
 			else
 				dest[i] = *src++;
 		}
@@ -173,8 +224,21 @@ void __declspec(naked) HookedRepMovsd() {
         jmp eax
     }
 }
+void OpenConsole()
+{
 
+	AllocConsole();
+
+	FILE* fp;
+	freopen_s(&fp, "CONOUT$", "w", stdout);
+	freopen_s(&fp, "CONOUT$", "w", stderr);
+	freopen_s(&fp, "CONIN$", "r", stdin);
+
+	SetConsoleTitleA("Debug Console");
+
+}
 void setupHook() {
+	OpenConsole();
 	GameConfig::Initialize();
 	onfootIndex = GameConfig::GetValue("Index", "onfoot", ZOOM_MID_INDEX);
 	inVehicleIndex = GameConfig::GetValue("Index", "inVehicle", ZOOM_MID_INDEX);
