@@ -7,7 +7,7 @@
 #pragma comment(lib, "libMinHook.x86.lib")
 
 #include <chrono> 
-
+bool m_GTASA_heightIncreaseMult_enabled = true;
 void patchJmp(void* addr, void* func) {
 	DWORD oldProtect;
 
@@ -17,6 +17,13 @@ void patchJmp(void* addr, void* func) {
 	VirtualProtect(addr, 5, oldProtect, &oldProtect);
 }
 
+void patchDWord(void* addr, uint32_t val) {
+	DWORD oldProtect;
+
+	VirtualProtect(addr, 1, PAGE_EXECUTE_READWRITE, &oldProtect);
+	*(uint32_t*)addr = val;
+	VirtualProtect(addr, 1, oldProtect, &oldProtect);
+}
 
 bool wasPressedThisFrame[256];
 bool lastFrameStates[256];
@@ -58,6 +65,12 @@ float getDeltaTime() {
     return elapsedMillis / 1000.0f;
 }
 
+// GTA's timestep does 0.8f at 60fps and 1.f at 30fps, wtf?? this isn't that. but works.
+float timestep() {
+	float frametime = *(float*)0x00E84380;
+	return frametime / (1.f / 30.f);
+}
+
 typedef uintptr_t(__fastcall* GetPointerT)(uintptr_t VehiclePointer);
 GetPointerT GetPointer = (GetPointerT)0x00AE28F0;
 
@@ -84,6 +97,8 @@ int vehicle_get_num_seats(uintptr_t vehicle_pointer) {
 		return 0;
 	if (*(bool*)(vehicle_pointer + 0x84D8)) // vp->m_srdi.m_loaded
 		return *(int*)(vehicle_pointer + 0x6CE8); // p_m_srdi->m_data.m_num_seats
+
+	return 8;
 }
 // what no symbols does to a mf, this probably isn't an inlined function but I couldn't find it, so let's recreate it.
 int vehicle_get_num_passengers(uintptr_t vehicle_pointer) {
@@ -106,13 +121,14 @@ bool isBike(uintptr_t vehicle_pointer) {
 float EditedZoomMod = 0.f;
 float zoom_values[] = { 2.f, -1.f, 0.f, 1.f, 2.f };
 float heightIncreaseMult = 0.f;
+char keySwitch = 'B';
 #define ZOOM_MID_INDEX (sizeof(zoom_values) / sizeof(zoom_values[0]) / 2)
 BYTE onfootIndex = ZOOM_MID_INDEX;
 BYTE inVehicleIndex = ZOOM_MID_INDEX;
 BYTE fineAimIndex = ZOOM_MID_INDEX;
 void PerformCustomMemoryCopy() {
 	UpdateKeys();
-	printf("is Bike: 0x%X \n", isBike(FindPlayersVehicle()));
+	//printf("is Bike: 0x%X \n", isBike(FindPlayersVehicle()));
 	enum camera_free_submodes : BYTE
 	{
 		CFSM_EXTERIOR_CLOSE = 0x0,
@@ -185,8 +201,23 @@ void PerformCustomMemoryCopy() {
 		if (t > 1.0f) t = 1.0f;
 
 		// Update EditedZoomMod towards the target value
+		if (player_status == CFSM_VEHICLE_DRIVER && isBike(FindPlayersVehicle())) {
+			if (vehicle_get_num_passengers(FindPlayersVehicle()) > 1) {
+				if (heightIncreaseMult < 1.0f) {
+					heightIncreaseMult = min(1.0f,  (0.02f * timestep()) + heightIncreaseMult);
+				}
+			}
+			else {
+				if (heightIncreaseMult > 0.0f) {
+					heightIncreaseMult = max(0.0f, heightIncreaseMult - (0.02f * timestep()));
+				}
+			}
+		}
+		else
+			heightIncreaseMult = 0.f;
+		printf("heightIncreaseMult 0x%X \n", &heightIncreaseMult);
 		EditedZoomMod = lerp(EditedZoomMod, target, t);
-		if (IsKeyPressed('B', false)) {
+		if (IsKeyPressed(keySwitch, false)) {
 			*activeIndex = (*activeIndex + 4) % 5;
 		}
 		float* src = reinterpret_cast<float*>(0x00E9A638);
@@ -198,7 +229,7 @@ void PerformCustomMemoryCopy() {
 				dest[i] = (*(float*)0x00E9A654) * powf(2.f, EditedZoomMod / 2.0f);
 				*src++;
 			}
-			else if (reinterpret_cast<uintptr_t>(src) == 0x00E9A63C) {
+			else if (reinterpret_cast<uintptr_t>(src) == 0x00E9A63C && m_GTASA_heightIncreaseMult_enabled) {
 				dest[i] = (*(float*)0x00E9A63C) + (0.4f * heightIncreaseMult);
 				*src++;
 			}
@@ -238,11 +269,13 @@ void OpenConsole()
 
 }
 void setupHook() {
+	patchDWord((void*)(0x00499B9F + 1), 0x00E9A60C);
 	OpenConsole();
 	GameConfig::Initialize();
 	onfootIndex = GameConfig::GetValue("Index", "onfoot", ZOOM_MID_INDEX);
 	inVehicleIndex = GameConfig::GetValue("Index", "inVehicle", ZOOM_MID_INDEX);
 	fineAimIndex = GameConfig::GetValue("Index", "fineAim", ZOOM_MID_INDEX);
+	keySwitch = GameConfig::GetValue("Binds", "ChangeCameraZoom", 'B');
 	patchJmp((void*)0x0049A4CB, HookedRepMovsd);
 }
 void safeconfig() {
