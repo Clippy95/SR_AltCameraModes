@@ -168,18 +168,32 @@ enum camera_free_submodes : BYTE
 };
 
 float EditedZoomMod = 0.f;
+float ShoulderTarget = 1.f;
 float zoom_values[] = { 2.0f,-1.5f, -1.f, 0.f, 1.f, 1.5f,2.f };
 float heightIncreaseMult = 0.f;
+float ShoulderSpeedMult = 6.f;
 char keySwitch = 'B';
+char keySwitchShoulder = VK_XBUTTON1;
 #define ZOOM_MID_INDEX (sizeof(zoom_values) / sizeof(zoom_values[0]) / 2)
 BYTE onfootIndex = ZOOM_MID_INDEX;
 BYTE inVehicleIndex = ZOOM_MID_INDEX;
 BYTE fineAimIndex = ZOOM_MID_INDEX;
+volatile bool switch_shoulder;
+
+inline bool isAnyFineAim(camera_free_submodes status) {
+	return status == CFSM_FINE_AIM ||
+		status == CFSM_FINE_AIM_CROUCH ||
+		status == CFSM_HELICOPTER_FINE_AIM ||
+		status == CFSM_FINE_AIM_VEHICLE;
+}
+
+
 void cf_lookat_position_process_midhook() {
 	UpdateKeys();
 	//printf("is Bike: 0x%X \n", isBike(FindPlayersVehicle()));
 		BYTE* activeIndex = &onfootIndex;
 		camera_free_submodes player_status = *(camera_free_submodes*)0x00E9A5BC;
+		float speed = 5.0f;
 		switch (player_status) {
 		case CFSM_VEHICLE_DRIVER:
 		case CFSM_WATERCRAFT_DRIVER:
@@ -191,7 +205,9 @@ void cf_lookat_position_process_midhook() {
 		case CFSM_FINE_AIM_CROUCH:
 		case CFSM_FINE_AIM:
 		case CFSM_HELICOPTER_FINE_AIM:
+		case CFSM_FINE_AIM_VEHICLE:
 			activeIndex = &fineAimIndex;
+			//speed *= 6.f;
 			break;
 		default:
 			activeIndex = &onfootIndex;
@@ -209,15 +225,10 @@ void cf_lookat_position_process_midhook() {
 			else
 				target *= 0.75f;
 			break;
-		case CFSM_FINE_AIM_CROUCH:
-		case CFSM_FINE_AIM:
-			//if(target > 0.f)
-			//target *= 0.35f;
-			//break;
 		default:
 			break;
 		}
-		float speed = 5.0f;
+		
 
 		float t = speed * getDeltaTime();
 		if (t > 1.0f) t = 1.0f;
@@ -243,8 +254,12 @@ void cf_lookat_position_process_midhook() {
 		else
 			heightIncreaseMult = 0.f;
 		EditedZoomMod = lerp(EditedZoomMod, target, t);
+		ShoulderTarget = lerp(ShoulderTarget, switch_shoulder ? -1.f : 1.f, t * ShoulderSpeedMult);
 		if (IsKeyPressed(keySwitch, false)) {
 			*activeIndex = (*activeIndex + 4) % 5;
+		}
+		else if (IsKeyPressed(keySwitchShoulder, false)) {
+			switch_shoulder = !switch_shoulder;
 		}
 		float* src = reinterpret_cast<float*>(0x00E9A638);
 		float* dest = reinterpret_cast<float*>(0x00E9A60C);
@@ -257,6 +272,10 @@ void cf_lookat_position_process_midhook() {
 			}
 			else if (m_GTASA_heightIncreaseMult_enabled && reinterpret_cast<uintptr_t>(src) == 0x00E9A63C) { // camera_free_look_at_offset.y \\ in GTA height is Z?
 				dest[i] = (*(float*)0x00E9A63C) + (0.4f * heightIncreaseMult);
+				*src++;
+			}
+			else if (isAnyFineAim(player_status) && reinterpret_cast<uintptr_t>(src) == 0x00E9A660) { // camera_free_x_shift
+				*(float*)0x00E9A634 = (*(float*)0x00E9A660) * ShoulderTarget;
 				*src++;
 			}
 			else
@@ -316,6 +335,7 @@ void __declspec(naked) cf_submode_params_set_by_lerp_midhookASM() {
 }
 __declspec(noinline) void loadKeys() {
 	keySwitch = GameConfig::GetValue("Binds", "ChangeCameraZoom", 'B');
+	keySwitchShoulder = GameConfig::GetValue("Binds", "ChangeShoulder", VK_XBUTTON1);
 }
 void setupHook() {
 	if (GameConfig::GetValue("Hooks", "Allow_for_GTASA_heightIncreaseMult", 1)) {
@@ -334,6 +354,13 @@ void setupHook() {
 	patchJmp((void*)0x0049A4CB, cf_lookat_position_process_midhook_ASM);
 	if(GameConfig::GetValue("EXPERIMENTAL","Halve_base_pitch_for_cars",0)) // this is probably in an xtbl somewhere (vehicles_cameras) for each vehicle?, and it acts weird on foot thus EXPERIMENTAL, probably better to change in xtbl
 	patchJmp((void*)0x00499AD2, cf_submode_params_set_by_lerp_midhookASM);
+
+	if (GameConfig::GetValue("EXPERIMENTAL", "EnableShoulderSwap_FineAim", 1)) {
+		patchDWord((void*)(0x0049C8EB + 2), 0x00E9A634);
+		patchDWord((void*)(0x0049CF45 + 2), 0x00E9A634);
+		ShoulderSpeedMult = (float)GameConfig::GetDoubleValue("EXPERIMENTAL", "ShoulderSwapSpeedMult", 6.0f);
+	}
+
 }
 void safeconfig() {
 	GameConfig::SetValue("Index", "onfoot", onfootIndex);
@@ -354,6 +381,7 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 		,NULL);
 	if (GameConfig::GetValue("Hooks", "Allow_for_GTASA_heightIncreaseMult", 1))
 	BlingMenuAddBool("ClippyCamera", "GTA:SA bikes cam raise with passenger", &m_GTASA_heightIncreaseMult_enabled, nullptr);
+	BlingMenuAddFloat("ClippyCamera", "ShoulderSwapSpeedMult", &ShoulderSpeedMult, NULL, 0.25f, 1.f, 50.f);
 	//BlingMenuAddFunc("ClippyCamera", "Reload binds from config", &loadKeys);
 
 	//BlingMenuAddInt8("ClippyCamera", "Index to mod", (signed char*)&mod_index, &DEBUG_setIndexPointers, 1, 0, sizeof(zoom_values) / sizeof(zoom_values[0]));

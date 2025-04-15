@@ -5,6 +5,10 @@
 #include <ctime>
 #include <cstdint>
 #include "GameConfig.h"
+#include "shlwapi.h"
+#pragma comment(lib, "shlwapi.lib")
+extern "C" IMAGE_DOS_HEADER __ImageBase;
+
 #if !RELOADED
 char ini_name[] = "SR_AltCameraModes.ini";
 #else
@@ -18,16 +22,19 @@ namespace GameConfig
 	//---------------------------------
 	void Initialize()
 	{
-		// Create a buffer with the INI path
-		GetCurrentDirectoryA(MAX_PATH, inipath);
-		strcat_s(inipath, MAX_PATH, "\\");
-		strcat_s(inipath, MAX_PATH, ini_name);
+		char modulePath[MAX_PATH];
+		GetModuleFileNameA((HMODULE)&__ImageBase, modulePath, MAX_PATH);
+
+		// Strip the filename to get the directory
+		PathRemoveFileSpecA(modulePath);
+
+		// Append the ini name
+		snprintf(inipath, MAX_PATH, "%s\\%s", modulePath, ini_name);
 
 		// Check if the INI file exists, create it if it doesn't
 		DWORD fileAttrib = GetFileAttributesA(inipath);
 		if (fileAttrib == INVALID_FILE_ATTRIBUTES)
 		{
-			// Create an empty INI file
 			HANDLE hFile = CreateFileA(inipath, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
 			if (hFile != INVALID_HANDLE_VALUE)
 			{
@@ -35,6 +42,7 @@ namespace GameConfig
 			}
 		}
 	}
+
 	//---------------------------------
 	// Get INI path
 	//---------------------------------
