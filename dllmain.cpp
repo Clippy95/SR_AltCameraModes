@@ -37,7 +37,9 @@ void patchJmp(void* addr, void* func) {
 	*(uint32_t*)((uint8_t*)addr + 1) = (uint32_t)func - (uint32_t)addr - 5;
 	VirtualProtect(addr, 5, oldProtect, &oldProtect);
 }
-
+BYTE havok_pasued() {
+	return (*(BYTE*)0x2526D28 || *(BYTE*)0x2527CB6);
+}
 void patchDWord(void* addr, uint32_t val) {
 	DWORD oldProtect;
 
@@ -59,7 +61,7 @@ void UpdateKeys()
 }
 
 inline float lerp(float a, float b, float t) {
-	return a + t * (b - a);
+		return a + t * (b - a);
 }
 
 __declspec(noinline) bool IsKeyPressed(unsigned char Key, bool Hold) // USE THIS FROM NOW ON
@@ -185,7 +187,7 @@ float ShoulderTarget = 1.f;
 float zoom_values[] = { 2.0f,-1.5f, -1.f, 0.f, 1.f, 1.5f,2.f };
 float heightIncreaseMult = 0.f;
 float ShoulderSpeedMult = 6.f;
-float ShoulderSRTTR = 0.6f;
+float ShoulderSRTTR = 0.0f;
 char keySwitch = 'B';
 char keySwitchShoulder = VK_XBUTTON1;
 #define ZOOM_MID_INDEX (sizeof(zoom_values) / sizeof(zoom_values[0]) / 2)
@@ -195,7 +197,7 @@ BYTE fineAimIndex = ZOOM_MID_INDEX;
 BYTE SRTTR_ShoulderIndex;
 volatile bool switch_shoulder;
 
-volatile float debug_SRTT_mult = 0.54f;
+volatile float debug_SRTT_mult = 1.74f;
 
 void cf_lookat_position_process_midhook() {
 	UpdateKeys();
@@ -271,6 +273,9 @@ void cf_lookat_position_process_midhook() {
 			shoulderTarget = 0.f;
 		float SRTTR_Shoulder_Target = 0.f;{}
 		if (canWeSRTTRShoulder(player_status) && !isAnyFineAim(player_status)) {
+			if (IsKeyPressed(keySwitchShoulder, false)) {
+				SRTTR_ShoulderIndex = (SRTTR_ShoulderIndex + 1) % 3;
+			}
 			switch (SRTTR_ShoulderIndex) {
 			case 0:
 				SRTTR_Shoulder_Target = 0.f;
@@ -287,13 +292,10 @@ void cf_lookat_position_process_midhook() {
 
 		ShoulderTarget = lerp(ShoulderTarget, shoulderTarget, t * ShoulderSpeedMult);
 		ShoulderSRTTR = lerp(ShoulderSRTTR, SRTTR_Shoulder_Target, t * debug_SRTT_mult);
-		if (IsKeyPressed(0x6, false)) {
-			SRTTR_ShoulderIndex = (SRTTR_ShoulderIndex + 1) % 3;
-		}
 		if (IsKeyPressed(keySwitch, false)) {
 			*activeIndex = (*activeIndex + 5) % 6;
 		}
-		else if (IsKeyPressed(keySwitchShoulder, false)) {
+		else if (isAnyFineAim(player_status) && IsKeyPressed(keySwitchShoulder, false)) {
 			switch_shoulder = !switch_shoulder;
 		}
 		float* src = reinterpret_cast<float*>(0x00E9A638);
@@ -385,12 +387,15 @@ void setupHook() {
 	onfootIndex = GameConfig::GetValue("Index", "onfoot", ZOOM_MID_INDEX);
 	inVehicleIndex = GameConfig::GetValue("Index", "inVehicle", ZOOM_MID_INDEX);
 	fineAimIndex = GameConfig::GetValue("Index", "fineAim", ZOOM_MID_INDEX);
+	SRTTR_ShoulderIndex = GameConfig::GetValue("Index", "SRTTR_ShoulderIndex", 0);
+	switch_shoulder = GameConfig::GetValue("Index", "switch_shoulder", 0);
+	debug_SRTT_mult = (float)GameConfig::GetDoubleValue("EXPERIMENTAL", "debug_SRTT_mult_lerptime", 2.5f);
 	loadKeys();
 	patchJmp((void*)0x0049A4CB, cf_lookat_position_process_midhook_ASM);
 	if(GameConfig::GetValue("EXPERIMENTAL","Halve_base_pitch_for_cars",0)) // this is probably in an xtbl somewhere (vehicles_cameras) for each vehicle?, and it acts weird on foot thus EXPERIMENTAL, probably better to change in xtbl
 	patchJmp((void*)0x00499AD2, cf_submode_params_set_by_lerp_midhookASM);
 
-	if (GameConfig::GetValue("EXPERIMENTAL", "EnableShoulderSwap_FineAim", 1)) {
+	if (GameConfig::GetValue("EXPERIMENTAL", "EnableShoulderSwap", 1)) {
 		patchDWord((void*)(0x0049C8EB + 2), 0x00E9A634);
 		patchDWord((void*)(0x0049CF45 + 2), 0x00E9A634);
 		ShoulderSpeedMult = (float)GameConfig::GetDoubleValue("EXPERIMENTAL", "ShoulderSwapSpeedMult", 6.0f);
@@ -401,6 +406,8 @@ void safeconfig() {
 	GameConfig::SetValue("Index", "onfoot", onfootIndex);
 	GameConfig::SetValue("Index", "inVehicle", inVehicleIndex);
 	GameConfig::SetValue("Index", "fineAim", fineAimIndex);
+	GameConfig::SetValue("Index", "SRTTR_ShoulderIndex", SRTTR_ShoulderIndex);
+	GameConfig::SetValue("Index", "switch_shoulder", switch_shoulder);
 }
 
 DWORD WINAPI LateBM(LPVOID lpParameter)
@@ -409,9 +416,9 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 	SleepEx(1200, 0);
 	BlingMenuAddFunc("ClippyCamera",
 #if !_DEBUG
-		"version: r3"
+		"version: r4"
 #else
-		"version: r3 : DEBUG BUILD"
+		"version: r4 : DEBUG BUILD"
 #endif
 		,NULL);
 	if (GameConfig::GetValue("Hooks", "Allow_for_GTASA_heightIncreaseMult", 1))
