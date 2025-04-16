@@ -166,27 +166,35 @@ enum camera_free_submodes : BYTE
 	CFSM_HUMAN_SHIELD = 0x16,
 	CFSM_SPRINT = 0x17,
 };
-
+bool canWeSRTTRShoulder(camera_free_submodes status) {
+	return !(status == CFSM_FINE_AIM ||
+		status == CFSM_FINE_AIM_CROUCH ||
+		status == CFSM_HELICOPTER_FINE_AIM ||
+		status == CFSM_FINE_AIM_VEHICLE || status == CFSM_HUMAN_SHIELD || status == CFSM_ZOOM || status == CFSM_AIRPLANE_DRIVER || status == CFSM_HELICOPTER_DRIVER || status == CFSM_WATERCRAFT_DRIVER ||
+		status == CFSM_VEHICLE_DRIVER_ALT || status == CFSM_VEHICLE_DRIVER);
+}
+bool isAnyFineAim(camera_free_submodes status) {
+	return status == CFSM_FINE_AIM ||
+		status == CFSM_FINE_AIM_CROUCH ||
+		status == CFSM_HELICOPTER_FINE_AIM ||
+		status == CFSM_FINE_AIM_VEHICLE || status == CFSM_HUMAN_SHIELD;
+}
 float EditedZoomMod = 0.f;
 float ShoulderTarget = 1.f;
 float zoom_values[] = { 2.0f,-1.5f, -1.f, 0.f, 1.f, 1.5f,2.f };
 float heightIncreaseMult = 0.f;
 float ShoulderSpeedMult = 6.f;
+float ShoulderSRTTR = 0.6f;
 char keySwitch = 'B';
 char keySwitchShoulder = VK_XBUTTON1;
 #define ZOOM_MID_INDEX (sizeof(zoom_values) / sizeof(zoom_values[0]) / 2)
 BYTE onfootIndex = ZOOM_MID_INDEX;
 BYTE inVehicleIndex = ZOOM_MID_INDEX;
 BYTE fineAimIndex = ZOOM_MID_INDEX;
+BYTE SRTTR_ShoulderIndex;
 volatile bool switch_shoulder;
 
-inline bool isAnyFineAim(camera_free_submodes status) {
-	return status == CFSM_FINE_AIM ||
-		status == CFSM_FINE_AIM_CROUCH ||
-		status == CFSM_HELICOPTER_FINE_AIM ||
-		status == CFSM_FINE_AIM_VEHICLE;
-}
-
+volatile float debug_SRTT_mult = 0.54f;
 
 void cf_lookat_position_process_midhook() {
 	UpdateKeys();
@@ -254,9 +262,35 @@ void cf_lookat_position_process_midhook() {
 		else
 			heightIncreaseMult = 0.f;
 		EditedZoomMod = lerp(EditedZoomMod, target, t);
-		ShoulderTarget = lerp(ShoulderTarget, switch_shoulder ? -1.f : 1.f, t * ShoulderSpeedMult);
+		float shoulderTarget = 0.f;
+		if (isAnyFineAim(player_status)) {
+			shoulderTarget = switch_shoulder ? -1.f : 1.f;
+		}
+		else
+			shoulderTarget = 0.f;
+		float SRTTR_Shoulder_Target = 0.f;{}
+		if (canWeSRTTRShoulder(player_status) && !isAnyFineAim(player_status)) {
+			switch (SRTTR_ShoulderIndex) {
+			case 0:
+				SRTTR_Shoulder_Target = 0.f;
+				break;
+			case 1:
+				SRTTR_Shoulder_Target = 0.6f;
+				break;
+			case 2:
+				SRTTR_Shoulder_Target = -0.6f;
+				break;
+			}
+		}
+
+
+		ShoulderTarget = lerp(ShoulderTarget, shoulderTarget, t * ShoulderSpeedMult);
+		ShoulderSRTTR = lerp(ShoulderSRTTR, SRTTR_Shoulder_Target, t * debug_SRTT_mult);
+		if (IsKeyPressed(0x6, false)) {
+			SRTTR_ShoulderIndex = (SRTTR_ShoulderIndex + 1) % 3;
+		}
 		if (IsKeyPressed(keySwitch, false)) {
-			*activeIndex = (*activeIndex + 4) % 5;
+			*activeIndex = (*activeIndex + 5) % 6;
 		}
 		else if (IsKeyPressed(keySwitchShoulder, false)) {
 			switch_shoulder = !switch_shoulder;
@@ -274,8 +308,8 @@ void cf_lookat_position_process_midhook() {
 				dest[i] = (*(float*)0x00E9A63C) + (0.4f * heightIncreaseMult);
 				*src++;
 			}
-			else if (isAnyFineAim(player_status) && reinterpret_cast<uintptr_t>(src) == 0x00E9A660) { // camera_free_x_shift
-				*(float*)0x00E9A634 = (*(float*)0x00E9A660) * ShoulderTarget;
+			else if (reinterpret_cast<uintptr_t>(src) == 0x00E9A660) { // camera_free_x_shift
+				*(float*)0x00E9A634 = ((*(float*)0x00E9A660) * ShoulderTarget) + ShoulderSRTTR;
 				*src++;
 			}
 			else
@@ -382,10 +416,14 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 	if (GameConfig::GetValue("Hooks", "Allow_for_GTASA_heightIncreaseMult", 1))
 	BlingMenuAddBool("ClippyCamera", "GTA:SA bikes cam raise with passenger", &m_GTASA_heightIncreaseMult_enabled, nullptr);
 	BlingMenuAddFloat("ClippyCamera", "ShoulderSwapSpeedMult", &ShoulderSpeedMult, NULL, 0.25f, 1.f, 50.f);
+	BlingMenuAddFloat("ClippyCamera", "debug_SRTT_mult_lerptime", (float*)&debug_SRTT_mult, NULL, 0.01f, 0.01f, 50.f);
 	//BlingMenuAddFunc("ClippyCamera", "Reload binds from config", &loadKeys);
 
 	//BlingMenuAddInt8("ClippyCamera", "Index to mod", (signed char*)&mod_index, &DEBUG_setIndexPointers, 1, 0, sizeof(zoom_values) / sizeof(zoom_values[0]));
 	//BlingMenuAddFloat("ClippyCamera", "value", ModifyValues, &DEBUG_setIndexPointers, 0.1f, -5.f, 5.f);
+	BlingMenuAddInt8("ClippyCamera", "&inVehicleIndex", (signed char*)&inVehicleIndex, NULL, 1, 0, sizeof(zoom_values) / sizeof(zoom_values[0] - 1));
+	BlingMenuAddInt8("ClippyCamera", "&onfootIndex", (signed char*)&onfootIndex, NULL, 1, 0, sizeof(zoom_values) / sizeof(zoom_values[0] - 1));
+	BlingMenuAddInt8("ClippyCamera", "&fineAimIndex", (signed char*)&fineAimIndex, NULL, 1, 0, sizeof(zoom_values) / sizeof(zoom_values[0] - 1));
 	for (int i = 0; i < (sizeof(zoom_values) / sizeof(zoom_values[0])); i++) {
 		std::string whatever;
 		whatever = "Index [" + std::to_string(i) + "]";
