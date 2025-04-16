@@ -112,7 +112,8 @@ uintptr_t FindPlayersVehicle() {
 	return NULL;
 }
 
-// Inlined function.
+// Inlined function - kind of.
+// address 0x00AA7340 - actual num_seats, gets called like 3 times but all other instances are inlined??????
 int vehicle_get_num_seats(uintptr_t vehicle_pointer) {
 	if (!vehicle_pointer)
 		return 0;
@@ -134,7 +135,7 @@ int vehicle_get_num_passengers(uintptr_t vehicle_pointer) {
 	return num_passengers;
 
 }
-// not inlined, address: 0x	w00AB51B0 for call but cba for an asm caller
+// not inlined, address: 0x00AB51B0 for call but cba for an asm caller
 bool isBike(uintptr_t vehicle_pointer) {
 	return vehicle_pointer && *(uintptr_t*)(*(uintptr_t*)(vehicle_pointer + 0x84E4) + 0x9C) == 1;
 }
