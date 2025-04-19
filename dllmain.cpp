@@ -190,6 +190,8 @@ float ShoulderSpeedMult = 6.f;
 float ShoulderSRTTR = 0.0f;
 char keySwitch = 'B';
 char keySwitchShoulder = VK_XBUTTON1;
+char keySwitchShoulderLeft = 0x0;
+char keySwitchShoulderRight = 0x0;
 #define ZOOM_MID_INDEX (sizeof(zoom_values) / sizeof(zoom_values[0]) / 2)
 BYTE onfootIndex = ZOOM_MID_INDEX;
 BYTE inVehicleIndex = ZOOM_MID_INDEX;
@@ -276,6 +278,25 @@ void cf_lookat_position_process_midhook() {
 			if (IsKeyPressed(keySwitchShoulder, false)) {
 				SRTTR_ShoulderIndex = (SRTTR_ShoulderIndex + 1) % 3;
 			}
+			else if (IsKeyPressed(keySwitchShoulderRight, false)) {
+				if (SRTTR_ShoulderIndex == 1) {
+					SRTTR_ShoulderIndex = 0;
+				}
+				else {
+					SRTTR_ShoulderIndex = 1;
+				}
+			}
+			else if (IsKeyPressed(keySwitchShoulderLeft, false)) {
+				if (SRTTR_ShoulderIndex == 2) {
+					SRTTR_ShoulderIndex = 0;
+				}
+				else {
+					SRTTR_ShoulderIndex = 2;
+				}
+			}
+		
+		
+
 			switch (SRTTR_ShoulderIndex) {
 			case 0:
 				SRTTR_Shoulder_Target = 0.f;
@@ -373,6 +394,8 @@ void __declspec(naked) cf_submode_params_set_by_lerp_midhookASM() {
 __declspec(noinline) void loadKeys() {
 	keySwitch = GameConfig::GetValue("Binds", "ChangeCameraZoom", 'B');
 	keySwitchShoulder = GameConfig::GetValue("Binds", "ChangeShoulder", VK_XBUTTON1);
+	keySwitchShoulderLeft = GameConfig::GetValue("Binds", "ChangeShoulderLeft", 0x0);
+	keySwitchShoulderRight = GameConfig::GetValue("Binds", "ChangeShoulderRight", 0x0);
 }
 void setupHook() {
 	if (GameConfig::GetValue("Hooks", "Allow_for_GTASA_heightIncreaseMult", 1)) {
