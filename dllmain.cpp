@@ -9,7 +9,11 @@
 #include <chrono> 
 
 #include <string>
-
+struct vector3 {
+	float x;
+	float y;
+	float z;
+};
 #if _DEBUG
 void OpenConsole()
 {
@@ -97,6 +101,9 @@ float timestep() {
 typedef uintptr_t(__fastcall* GetPointerT)(uintptr_t VehiclePointer);
 GetPointerT GetPointer = (GetPointerT)0x00AE28F0;
 
+typedef int (__thiscall* vehicle_get_speed_in_mphT)(uintptr_t FinalVehiclePointer);
+vehicle_get_speed_in_mphT vehicle_get_speed_in_mph = (vehicle_get_speed_in_mphT)0xAA6820;
+
 uintptr_t FindPlayer() {
 	return *(uintptr_t*)(0x21703D4);
 }
@@ -108,6 +115,8 @@ uintptr_t FindPlayersVehicle() {
 	if (players_vehicle_handle) {
 		uintptr_t value = *(uintptr_t*)players_vehicle_handle;
 		if (value) {
+			//printf("pointer 0x%X \n", GetPointer(value));
+			//printf("Speed %d \n", vehicle_get_speed_in_mph(GetPointer(value)));
 			return GetPointer(value);
 		}
 	}
@@ -200,6 +209,35 @@ BYTE SRTTR_ShoulderIndex;
 volatile bool switch_shoulder;
 
 volatile float debug_SRTT_mult = 1.74f;
+
+void CameraShake(vector3* look_at_offset) {
+	if (!FindPlayersVehicle() || look_at_offset == NULL)
+		return;
+
+	int mph_vehicle = vehicle_get_speed_in_mph(FindPlayersVehicle());
+
+	// Start shake at 60 MPH
+	if (mph_vehicle < 45)
+		return;
+
+	// Calculate intensity based on speed (0.0 to 1.0+)
+	float intensity = (mph_vehicle - 45) / 100.0f; // Scales from 0 at 60mph to 1.0 at 160mph
+	intensity = min(intensity, 4.0f); // Cap at 2.0 for very high speeds
+
+	// Get current time using GTA's timestep
+	static float time = 0.0f;
+	time += timestep();
+
+	// Generate shake offsets using different frequencies for each axis
+	float shakeX = sin(time * 15.0f) * intensity * 0.05f;
+	float shakeY = sin(time * 12.3f) * intensity * 0.02f;
+	float shakeZ = cos(time * 18.7f) * intensity * 0.02f;
+
+	// Apply shake to the look_at_offset
+	look_at_offset->x += shakeX;
+	look_at_offset->y += shakeY;
+	look_at_offset->z += shakeZ;
+}
 
 void cf_lookat_position_process_midhook() {
 	UpdateKeys();
@@ -336,9 +374,26 @@ void cf_lookat_position_process_midhook() {
 				*(float*)0x00E9A634 = ((*(float*)0x00E9A660) * ShoulderTarget) + ShoulderSRTTR;
 				*src++;
 			}
+			else if (reinterpret_cast<uintptr_t>(src) == 0x00E9A638) { // camera_free_look_at_offset Vector3
+				vector3* originalOffset = (vector3*)0x00E9A638;
+
+				vector3 modifiedOffset = *originalOffset;
+				
+				CameraShake(&modifiedOffset);
+
+				*(vector3*)0x00E9A60C = modifiedOffset;
+
+				// Skip the next 2 iterations since we're handling the full Vector3 (3 floats)
+				dest[i] = modifiedOffset.x;
+				dest[i + 1] = modifiedOffset.y;
+				dest[i + 2] = modifiedOffset.z;
+				src += 3; // Skip 3 floats
+				i += 2;   // We'll increment by 1 more in the loop
+			}
 			else
 				dest[i] = *src++;
 		}
+		
 	}
 
 void __declspec(naked) cf_lookat_position_process_midhook_ASM() {
