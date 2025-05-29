@@ -148,9 +148,17 @@ int vehicle_get_num_passengers(uintptr_t vehicle_pointer) {
 }
 // not inlined, address: 0x00AB51B0 for call but cba for an asm caller
 bool isBike(uintptr_t vehicle_pointer) {
-	return vehicle_pointer && *(uintptr_t*)(*(uintptr_t*)(vehicle_pointer + 0x84E4) + 0x9C) == 1;
+	return getVehicleType(vehicle_pointer, 1);
 }
 
+bool isFlyAble(uintptr_t vehicle_pointer) {
+	// 3 for helicopter, 2 airplane? hopefully
+	return getVehicleType(vehicle_pointer, 3) || getVehicleType(vehicle_pointer, 2);
+}
+
+inline bool getVehicleType(uintptr_t vehicle_pointer, int type) {
+	return vehicle_pointer && *(uintptr_t*)(*(uintptr_t*)(vehicle_pointer + 0x84E4) + 0x9C) == type;
+}
 enum camera_free_submodes : BYTE
 {
 	CFSM_EXTERIOR_CLOSE = 0x0,
@@ -210,30 +218,37 @@ volatile bool switch_shoulder;
 
 volatile float debug_SRTT_mult = 1.74f;
 
-void CameraShake(vector3* look_at_offset) {
-	if (!FindPlayersVehicle() || look_at_offset == NULL)
-		return;
+static bool bCamShake = true;
+static float fShakeIntensity = 0.035f;
+static int nShakeStartSpeed = 45; // MPH to start shaking
+static float fShakeMaxIntensity = 4.0f; // Max intensity cap
+static float fShakeFreqX = 15.0f;
+static float fShakeFreqY = 12.3f;
+static float fShakeFreqZ = 18.7f;
+static float fShakeMultX = 0.05f;
+static float fShakeMultY = 0.02f;
+static float fShakeMultZ = 0.02f;
 
+void CameraShake(vector3* look_at_offset) {
+	if (!bCamShake || !FindPlayersVehicle() || look_at_offset == NULL)
+		return;
+	if (isFlyAble(FindPlayersVehicle()))
+		return;
 	int mph_vehicle = vehicle_get_speed_in_mph(FindPlayersVehicle());
 
-	// Start shake at 60 MPH
-	if (mph_vehicle < 45)
+	if (mph_vehicle < nShakeStartSpeed)
 		return;
 
-	// Calculate intensity based on speed (0.0 to 1.0+)
-	float intensity = (mph_vehicle - 45) / 100.0f; // Scales from 0 at 60mph to 1.0 at 160mph
-	intensity = min(intensity, 4.0f); // Cap at 2.0 for very high speeds
+	float intensity = (mph_vehicle - nShakeStartSpeed) / 100.0f;
+	intensity = min(intensity, fShakeMaxIntensity);
 
-	// Get current time using GTA's timestep
 	static float time = 0.0f;
 	time += timestep();
 
-	// Generate shake offsets using different frequencies for each axis
-	float shakeX = sin(time * 15.0f) * intensity * 0.05f;
-	float shakeY = sin(time * 12.3f) * intensity * 0.02f;
-	float shakeZ = cos(time * 18.7f) * intensity * 0.02f;
+	float shakeX = sin(time * fShakeFreqX) * intensity * fShakeMultX * fShakeIntensity;
+	float shakeY = sin(time * fShakeFreqY) * intensity * fShakeMultY * fShakeIntensity;
+	float shakeZ = cos(time * fShakeFreqZ) * intensity * fShakeMultZ * fShakeIntensity;
 
-	// Apply shake to the look_at_offset
 	look_at_offset->x += shakeX;
 	look_at_offset->y += shakeY;
 	look_at_offset->z += shakeZ;
@@ -515,6 +530,28 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 		whatever = "Index [" + std::to_string(i) + "]";
 		BlingMenuAddFloat("ClippyCamera", whatever.c_str(), &zoom_values[i], NULL, 0.1f, -5.f, 5.f);
 	}
+
+
+
+	BlingMenuAddBool("ClippyCamera", "Enable Camera Shake", &bCamShake, nullptr);
+	BlingMenuAddFloat("ClippyCamera", "Shake Intensity", &fShakeIntensity, NULL, 0.01f, 0.0f, 2.5f);
+	BlingMenuAddInt("ClippyCamera", "Shake Start Speed (MPH)", &nShakeStartSpeed, NULL, 5, 20, 100);
+	BlingMenuAddFloat("ClippyCamera", "Max Shake Intensity", &fShakeMaxIntensity, NULL, 0.01f, 1.0f, 10.0f);
+
+	// Shake frequency settings
+	BlingMenuAddFloat("ClippyCamera", "Shake Freq X", &fShakeFreqX, NULL, 0.5f, 5.0f, 50.0f);
+	BlingMenuAddFloat("ClippyCamera", "Shake Freq Y", &fShakeFreqY, NULL, 0.5f, 5.0f, 50.0f);
+	BlingMenuAddFloat("ClippyCamera", "Shake Freq Z", &fShakeFreqZ, NULL, 0.5f, 5.0f, 50.0f);
+
+	// Shake multiplier settings
+	BlingMenuAddFloat("ClippyCamera", "Shake Mult X", &fShakeMultX, NULL, 0.01f, 0.0f, 0.2f);
+	BlingMenuAddFloat("ClippyCamera", "Shake Mult Y", &fShakeMultY, NULL, 0.01f, 0.0f, 0.2f);
+	BlingMenuAddFloat("ClippyCamera", "Shake Mult Z", &fShakeMultZ, NULL, 0.01f, 0.0f, 0.2f);
+
+	// Your existing menu items continue...
+	BlingMenuAddFloat("ClippyCamera", "ShoulderSwapSpeedMult", &ShoulderSpeedMult, NULL, 0.25f, 1.f, 50.f);
+
+
 
 	return 0;
 }
