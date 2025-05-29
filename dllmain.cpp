@@ -9,6 +9,7 @@
 #include <chrono> 
 
 #include <string>
+using namespace GameConfig;
 struct vector3 {
 	float x;
 	float y;
@@ -100,6 +101,10 @@ inline float timestep() {
 // GTA's timestep does 0.8f at 60fps and 1.f at 30fps, wtf?? this isn't that. but works.
 float GTA_timestep() {
 	return timestep() / (1.f / 30.f);
+}
+
+float DK_timestep() {
+	return  (1.f / 30.f) / timestep();
 }
 
 typedef uintptr_t(__fastcall* GetPointerT)(uintptr_t VehiclePointer);
@@ -225,30 +230,33 @@ volatile bool switch_shoulder;
 volatile float debug_SRTT_mult = 1.74f;
 
 static bool bCamShake = true;
-static float fShakeIntensity = 0.035f;
-static int nShakeStartSpeed = 45; // MPH to start shaking
-static float fShakeMaxIntensity = 4.0f; // Max intensity cap
+static float fShakeIntensity = 0.105000;
+static int nShakeStartSpeed = 40; // MPH to start shaking
+static float fShakeMaxIntensity = 4.5f; // Max intensity cap
 static float fShakeFreqX = 15.0f;
 static float fShakeFreqY = 12.3f;
 static float fShakeFreqZ = 18.7f;
-static float fShakeMultX = 0.05f;
-static float fShakeMultY = 0.02f;
-static float fShakeMultZ = 0.02f;
+static float fShakeMultX = 0.110000f;
+static float fShakeMultY = 0.100000f;
+static float fShakeMultZ = 0.100000f;
 
 static bool bSmoothShake = true; // true = smooth sine waves, false = random jerky
-static float x_offset = -0.3f;
-static bool bGTAIV_vehicle_camera = true;
+static float x_offset = -0.45f;
+static float y_offset = 0.f;
+static float z_offset = 0.f;
+static bool bGTAIV_vehicle_camera = false;
 static float fGTAIV_LerpSpeed = 2.0f;
 static float currentXOffset = 0.0f;
+static float currentYOffset = 0.0f;
+static float currentZOffset = 0.0f;
 static bool bSmoothShake_useGTATimestep = false;
 static bool bAllowGTAIV_vehicle_camera_for_flyable = false;
 void GTAIV_Camera_Offset(vector3* look_at_offset) {
-	if (!bGTAIV_vehicle_camera)
-		return;
+
 
 	// Determine target offset based on whether we're in a vehicle
 	float targetOffset = 0.0f;
-	if (FindPlayersVehicle() && (!isFlyAble(FindPlayersVehicle()) || bAllowGTAIV_vehicle_camera_for_flyable)) {
+	if (bGTAIV_vehicle_camera && FindPlayersVehicle() && (!isFlyAble(FindPlayersVehicle()) || bAllowGTAIV_vehicle_camera_for_flyable)) {
 		targetOffset = x_offset;
 	}
 
@@ -342,7 +350,7 @@ void cf_lookat_position_process_midhook() {
 		}
 		
 
-		float t = speed * getDeltaTime();
+		float t = speed * timestep();
 		if (t > 1.0f) t = 1.0f;
 		// Code from SACarCam by erorcun, 
 		// I assume this is original GTA:SA logic as it acts like it even here. 
@@ -408,10 +416,16 @@ void cf_lookat_position_process_midhook() {
 				break;
 			}
 		}
+ 
 
+		float shoulderT = t * ShoulderSpeedMult;
+		if (shoulderT > 1.0f) shoulderT = 1.0f;
 
-		ShoulderTarget = lerp(ShoulderTarget, shoulderTarget, t * ShoulderSpeedMult);
-		ShoulderSRTTR = lerp(ShoulderSRTTR, SRTTR_Shoulder_Target, t * debug_SRTT_mult);
+		float srttrT = t * debug_SRTT_mult;
+		if (srttrT > 1.0f) srttrT = 1.0f;
+
+		ShoulderTarget = lerp(ShoulderTarget, shoulderTarget, shoulderT);
+		ShoulderSRTTR = lerp(ShoulderSRTTR, SRTTR_Shoulder_Target, srttrT);
 		if (IsKeyPressed(keySwitch, false)) {
 			*activeIndex = (*activeIndex + 5) % 6;
 		}
@@ -549,6 +563,34 @@ void safeconfig() {
 	GameConfig::SetValue("Index", "switch_shoulder", switch_shoulder);
 }
 
+void loadnewconfig() {
+	// Basic shake settings
+	bCamShake = GetValue("Values", "bCamShake", bCamShake);
+	fShakeIntensity = GetDoubleValue("Values", "fShakeIntensity", fShakeIntensity);
+	nShakeStartSpeed = GetValue("Values", "nShakeStartSpeed", nShakeStartSpeed);
+	fShakeMaxIntensity = GetDoubleValue("Values", "fShakeMaxIntensity", fShakeMaxIntensity);
+
+	// Shake frequency settings
+	fShakeFreqX = GetDoubleValue("Values", "fShakeFreqX", fShakeFreqX);
+	fShakeFreqY = GetDoubleValue("Values", "fShakeFreqY", fShakeFreqY);
+	fShakeFreqZ = GetDoubleValue("Values", "fShakeFreqZ", fShakeFreqZ);
+
+	// Shake multiplier settings
+	fShakeMultX = GetDoubleValue("Values", "fShakeMultX", fShakeMultX);
+	fShakeMultY = GetDoubleValue("Values", "fShakeMultY", fShakeMultY);
+	fShakeMultZ = GetDoubleValue("Values", "fShakeMultZ", fShakeMultZ);
+
+	// Additional settings
+	bSmoothShake = GetValue("Values", "bSmoothShake", bSmoothShake);
+	bSmoothShake_useGTATimestep = GetValue("Values", "bSmoothShake_useGTATimestep", bSmoothShake_useGTATimestep);
+	ShoulderSpeedMult = GetDoubleValue("Values", "ShoulderSpeedMult", ShoulderSpeedMult);
+	x_offset = GetDoubleValue("Values", "x_offset", x_offset);
+	bGTAIV_vehicle_camera = GetValue("Values", "bGTAIV_vehicle_camera", bGTAIV_vehicle_camera);
+
+	bAllowGTAIV_vehicle_camera_for_flyable = GetValue("Values", "bAllowGTAIV_vehicle_camera_for_flyable", bAllowGTAIV_vehicle_camera_for_flyable);
+
+}
+
 DWORD WINAPI LateBM(LPVOID lpParameter)
 {
 	// Funny Tervel hooking Sleep, BlingMenu settings get added after 2450ms
@@ -598,6 +640,35 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 	BlingMenuAddFloat("ClippyCamera", "ShoulderSwapSpeedMult", &ShoulderSpeedMult, NULL, 0.25f, 1.f, 50.f);
 	BlingMenuAddFloat("ClippyCamera", "x_offset_car", &x_offset, NULL, 0.05f, -5.f, 5.f);
 	BlingMenuAddBool("ClippyCamera", "bGTAIV_vehicle_camera", &bGTAIV_vehicle_camera, NULL);
+	BlingMenuAddBool("ClippyCamera", "bAllowGTAIV_vehicle_camera_for_flyable", &bAllowGTAIV_vehicle_camera_for_flyable, NULL);
+	BlingMenuAddFunc("ClippyCamera", "Save (some) to .ini", []() {
+		// Basic shake settings
+		SetValue("Values", "bCamShake", bCamShake);
+		SetDoubleValue("Values", "fShakeIntensity", fShakeIntensity);
+		SetValue("Values", "nShakeStartSpeed", nShakeStartSpeed);
+		SetDoubleValue("Values", "fShakeMaxIntensity", fShakeMaxIntensity);
+
+		// Shake frequency settings
+		SetDoubleValue("Values", "fShakeFreqX", fShakeFreqX);
+		SetDoubleValue("Values", "fShakeFreqY", fShakeFreqY);
+		SetDoubleValue("Values", "fShakeFreqZ", fShakeFreqZ);
+
+		// Shake multiplier settings
+		SetDoubleValue("Values", "fShakeMultX", fShakeMultX);
+		SetDoubleValue("Values", "fShakeMultY", fShakeMultY);
+		SetDoubleValue("Values", "fShakeMultZ", fShakeMultZ);
+
+		// Additional settings
+		SetValue("Values", "bSmoothShake", bSmoothShake);
+		SetValue("Values", "bSmoothShake_useGTATimestep", bSmoothShake_useGTATimestep);
+		SetDoubleValue("Values", "ShoulderSpeedMult", ShoulderSpeedMult);
+		SetDoubleValue("Values", "x_offset", x_offset);
+		SetValue("Values", "bGTAIV_vehicle_camera", bGTAIV_vehicle_camera);
+		SetValue("Values", "bAllowGTAIV_vehicle_camera_for_flyable", bAllowGTAIV_vehicle_camera_for_flyable);
+		});
+
+	BlingMenuAddFunc("ClippyCamera", "Load from .ini", &loadnewconfig);
+
 
 	return 0;
 }
@@ -610,6 +681,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved) {
 		if (BlingMenuLoad()) {
 			CreateThread(0, 0, LateBM, 0, 0, 0);
 		}
+		loadnewconfig();
         break;
     case DLL_PROCESS_DETACH:
 		safeconfig();
