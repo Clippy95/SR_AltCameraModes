@@ -583,7 +583,6 @@ void loadnewconfig() {
 	// Additional settings
 	bSmoothShake = GetValue("Values", "bSmoothShake", bSmoothShake);
 	bSmoothShake_useGTATimestep = GetValue("Values", "bSmoothShake_useGTATimestep", bSmoothShake_useGTATimestep);
-	ShoulderSpeedMult = GetDoubleValue("Values", "ShoulderSpeedMult", ShoulderSpeedMult);
 	x_offset = GetDoubleValue("Values", "x_offset", x_offset);
 	bGTAIV_vehicle_camera = GetValue("Values", "bGTAIV_vehicle_camera", bGTAIV_vehicle_camera);
 
@@ -661,7 +660,6 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 		// Additional settings
 		SetValue("Values", "bSmoothShake", bSmoothShake);
 		SetValue("Values", "bSmoothShake_useGTATimestep", bSmoothShake_useGTATimestep);
-		SetDoubleValue("Values", "ShoulderSpeedMult", ShoulderSpeedMult);
 		SetDoubleValue("Values", "x_offset", x_offset);
 		SetValue("Values", "bGTAIV_vehicle_camera", bGTAIV_vehicle_camera);
 		SetValue("Values", "bAllowGTAIV_vehicle_camera_for_flyable", bAllowGTAIV_vehicle_camera_for_flyable);
