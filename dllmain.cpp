@@ -92,10 +92,14 @@ float getDeltaTime() {
     return elapsedMillis / 1000.0f;
 }
 
+
+inline float timestep() {
+	return *(float*)0x00E84380;
+}
+
 // GTA's timestep does 0.8f at 60fps and 1.f at 30fps, wtf?? this isn't that. but works.
-float timestep() {
-	float frametime = *(float*)0x00E84380;
-	return frametime / (1.f / 30.f);
+float GTA_timestep() {
+	return timestep() / (1.f / 30.f);
 }
 
 typedef uintptr_t(__fastcall* GetPointerT)(uintptr_t VehiclePointer);
@@ -146,6 +150,11 @@ int vehicle_get_num_passengers(uintptr_t vehicle_pointer) {
 	return num_passengers;
 
 }
+
+inline bool getVehicleType(uintptr_t vehicle_pointer, int type) {
+	return vehicle_pointer && *(uintptr_t*)(*(uintptr_t*)(vehicle_pointer + 0x84E4) + 0x9C) == type;
+}
+
 // not inlined, address: 0x00AB51B0 for call but cba for an asm caller
 bool isBike(uintptr_t vehicle_pointer) {
 	return getVehicleType(vehicle_pointer, 1);
@@ -156,9 +165,6 @@ bool isFlyAble(uintptr_t vehicle_pointer) {
 	return getVehicleType(vehicle_pointer, 3) || getVehicleType(vehicle_pointer, 2);
 }
 
-inline bool getVehicleType(uintptr_t vehicle_pointer, int type) {
-	return vehicle_pointer && *(uintptr_t*)(*(uintptr_t*)(vehicle_pointer + 0x84E4) + 0x9C) == type;
-}
 enum camera_free_submodes : BYTE
 {
 	CFSM_EXTERIOR_CLOSE = 0x0,
@@ -229,30 +235,66 @@ static float fShakeMultX = 0.05f;
 static float fShakeMultY = 0.02f;
 static float fShakeMultZ = 0.02f;
 
+static bool bSmoothShake = true; // true = smooth sine waves, false = random jerky
+static float x_offset = -0.3f;
+static bool bGTAIV_vehicle_camera = true;
+static float fGTAIV_LerpSpeed = 2.0f;
+static float currentXOffset = 0.0f;
+void GTAIV_Camera_Offset(vector3* look_at_offset) {
+	if (!bGTAIV_vehicle_camera)
+		return;
+
+	// Determine target offset based on whether we're in a vehicle
+	float targetOffset = 0.0f;
+	if (FindPlayersVehicle() && !isFlyAble(FindPlayersVehicle())) {
+		targetOffset = x_offset;
+	}
+
+
+	float deltaTime = timestep();
+	currentXOffset = currentXOffset + (targetOffset - currentXOffset) * fGTAIV_LerpSpeed * deltaTime;
+
+
+	look_at_offset->x += currentXOffset;
+}
+
 void CameraShake(vector3* look_at_offset) {
 	if (!bCamShake || !FindPlayersVehicle() || look_at_offset == NULL)
 		return;
 	if (isFlyAble(FindPlayersVehicle()))
 		return;
 	int mph_vehicle = vehicle_get_speed_in_mph(FindPlayersVehicle());
-
 	if (mph_vehicle < nShakeStartSpeed)
 		return;
-
 	float intensity = (mph_vehicle - nShakeStartSpeed) / 100.0f;
 	intensity = min(intensity, fShakeMaxIntensity);
 
-	static float time = 0.0f;
-	time += timestep();
+	float shakeX, shakeY, shakeZ;
 
-	float shakeX = sin(time * fShakeFreqX) * intensity * fShakeMultX * fShakeIntensity;
-	float shakeY = sin(time * fShakeFreqY) * intensity * fShakeMultY * fShakeIntensity;
-	float shakeZ = cos(time * fShakeFreqZ) * intensity * fShakeMultZ * fShakeIntensity;
+	if (bSmoothShake) {
+		// Smooth sine wave shake
+		static float time = 0.0f;
+		time += timestep();
+		if (time > 360.0f) time = 0.0f; // Prevent overflow
+
+		shakeX = sin(time * fShakeFreqX) * intensity * fShakeMultX * fShakeIntensity;
+		shakeY = sin(time * fShakeFreqY) * intensity * fShakeMultY * fShakeIntensity;
+		shakeZ = cos(time * fShakeFreqZ) * intensity * fShakeMultZ * fShakeIntensity;
+	}
+	else {
+		int shakeRand = rand();
+		float shakeOffset = intensity * fShakeIntensity * 0.1f;
+
+		shakeX = shakeOffset * ((shakeRand & 0xF) - 7) * fShakeMultX;
+		shakeY = shakeOffset * (((shakeRand & 0xF0) >> 4) - 7) * fShakeMultY;
+		shakeZ = shakeOffset * (((shakeRand & 0xF00) >> 8) - 7) * fShakeMultZ;
+	}
 
 	look_at_offset->x += shakeX;
 	look_at_offset->y += shakeY;
 	look_at_offset->z += shakeZ;
 }
+
 
 void cf_lookat_position_process_midhook() {
 	UpdateKeys();
@@ -305,7 +347,7 @@ void cf_lookat_position_process_midhook() {
 			// This function might be overkill for this as bikes only have 2 seats so we can just check the handle of the second seat? either ways took me too long to figure this passenger out lol
 			if (vehicle_get_num_passengers(FindPlayersVehicle()) > 1) {
 				if (heightIncreaseMult < 1.0f) {
-					heightIncreaseMult = min(1.0f,  (0.02f * timestep()) + heightIncreaseMult);
+					heightIncreaseMult = min(1.0f,  (0.02f * GTA_timestep()) + heightIncreaseMult);
 				}
 			}
 			else {
@@ -313,7 +355,7 @@ void cf_lookat_position_process_midhook() {
 					// SACarCam does 
 					// heightIncreaseMult = max(0.0f, heightIncreaseMult - timestep() * 0.02f);
 					// that won't work here for some reason, it'll just insta go to 0.f or break the camera.
-					heightIncreaseMult = max(0.0f, heightIncreaseMult - (0.02f * timestep()));
+					heightIncreaseMult = max(0.0f, heightIncreaseMult - (0.02f * GTA_timestep()));
 				}
 			}
 		}
@@ -395,7 +437,7 @@ void cf_lookat_position_process_midhook() {
 				vector3 modifiedOffset = *originalOffset;
 				
 				CameraShake(&modifiedOffset);
-
+				GTAIV_Camera_Offset(&modifiedOffset);
 				*(vector3*)0x00E9A60C = modifiedOffset;
 
 				// Skip the next 2 iterations since we're handling the full Vector3 (3 floats)
@@ -547,10 +589,10 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 	BlingMenuAddFloat("ClippyCamera", "Shake Mult X", &fShakeMultX, NULL, 0.01f, 0.0f, 0.2f);
 	BlingMenuAddFloat("ClippyCamera", "Shake Mult Y", &fShakeMultY, NULL, 0.01f, 0.0f, 0.2f);
 	BlingMenuAddFloat("ClippyCamera", "Shake Mult Z", &fShakeMultZ, NULL, 0.01f, 0.0f, 0.2f);
+	BlingMenuAddBool("ClippyCamera", "Smooth Shake (vs Random)", &bSmoothShake, nullptr);
 
-	// Your existing menu items continue...
 	BlingMenuAddFloat("ClippyCamera", "ShoulderSwapSpeedMult", &ShoulderSpeedMult, NULL, 0.25f, 1.f, 50.f);
-
+	BlingMenuAddFloat("ClippyCamera", "x_offset_car", &x_offset, NULL, 0.05f, -5.f, 5.f);
 
 
 	return 0;
