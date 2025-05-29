@@ -240,13 +240,15 @@ static float x_offset = -0.3f;
 static bool bGTAIV_vehicle_camera = true;
 static float fGTAIV_LerpSpeed = 2.0f;
 static float currentXOffset = 0.0f;
+static bool bSmoothShake_useGTATimestep = false;
+static bool bAllowGTAIV_vehicle_camera_for_flyable = false;
 void GTAIV_Camera_Offset(vector3* look_at_offset) {
 	if (!bGTAIV_vehicle_camera)
 		return;
 
 	// Determine target offset based on whether we're in a vehicle
 	float targetOffset = 0.0f;
-	if (FindPlayersVehicle() && !isFlyAble(FindPlayersVehicle())) {
+	if (FindPlayersVehicle() && (!isFlyAble(FindPlayersVehicle()) || bAllowGTAIV_vehicle_camera_for_flyable)) {
 		targetOffset = x_offset;
 	}
 
@@ -274,7 +276,9 @@ void CameraShake(vector3* look_at_offset) {
 	if (bSmoothShake) {
 		// Smooth sine wave shake
 		static float time = 0.0f;
-		time += timestep();
+		if (!bSmoothShake_useGTATimestep)
+			time += timestep();
+		else time += GTA_timestep();
 		if (time > 360.0f) time = 0.0f; // Prevent overflow
 
 		shakeX = sin(time * fShakeFreqX) * intensity * fShakeMultX * fShakeIntensity;
@@ -590,10 +594,10 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 	BlingMenuAddFloat("ClippyCamera", "Shake Mult Y", &fShakeMultY, NULL, 0.01f, 0.0f, 0.2f);
 	BlingMenuAddFloat("ClippyCamera", "Shake Mult Z", &fShakeMultZ, NULL, 0.01f, 0.0f, 0.2f);
 	BlingMenuAddBool("ClippyCamera", "Smooth Shake (vs Random)", &bSmoothShake, nullptr);
-
+	BlingMenuAddBool("ClippyCamera", "bSmoothShake_useGTATimestep", &bSmoothShake_useGTATimestep,NULL);
 	BlingMenuAddFloat("ClippyCamera", "ShoulderSwapSpeedMult", &ShoulderSpeedMult, NULL, 0.25f, 1.f, 50.f);
 	BlingMenuAddFloat("ClippyCamera", "x_offset_car", &x_offset, NULL, 0.05f, -5.f, 5.f);
-
+	BlingMenuAddBool("ClippyCamera", "bGTAIV_vehicle_camera", &bGTAIV_vehicle_camera, NULL);
 
 	return 0;
 }
