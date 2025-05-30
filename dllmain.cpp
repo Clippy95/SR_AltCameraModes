@@ -157,6 +157,8 @@ int vehicle_get_num_passengers(uintptr_t vehicle_pointer) {
 }
 
 inline bool getVehicleType(uintptr_t vehicle_pointer, int type) {
+	if (vehicle_pointer == NULL)
+		return false;
 	return vehicle_pointer && *(uintptr_t*)(*(uintptr_t*)(vehicle_pointer + 0x84E4) + 0x9C) == type;
 }
 
@@ -251,12 +253,13 @@ static float currentYOffset = 0.0f;
 static float currentZOffset = 0.0f;
 static bool bSmoothShake_useGTATimestep = false;
 static bool bAllowGTAIV_vehicle_camera_for_flyable = false;
+static bool bAllowGTAIV_vehicle_camera_for_bike = false;
 void GTAIV_Camera_Offset(vector3* look_at_offset) {
 
 
 	// Determine target offset based on whether we're in a vehicle
 	float targetOffset = 0.0f;
-	if (bGTAIV_vehicle_camera && FindPlayersVehicle() && (!isFlyAble(FindPlayersVehicle()) || bAllowGTAIV_vehicle_camera_for_flyable)) {
+	if (bGTAIV_vehicle_camera && FindPlayersVehicle() && (!isFlyAble(FindPlayersVehicle()) || bAllowGTAIV_vehicle_camera_for_flyable) && (!isBike(FindPlayersVehicle()) || bAllowGTAIV_vehicle_camera_for_bike)) {
 		targetOffset = x_offset;
 	}
 
@@ -587,6 +590,7 @@ void loadnewconfig() {
 	bGTAIV_vehicle_camera = GetValue("Values", "bGTAIV_vehicle_camera", bGTAIV_vehicle_camera);
 
 	bAllowGTAIV_vehicle_camera_for_flyable = GetValue("Values", "bAllowGTAIV_vehicle_camera_for_flyable", bAllowGTAIV_vehicle_camera_for_flyable);
+	bAllowGTAIV_vehicle_camera_for_bike = GetValue("Values", "bAllowGTAIV_vehicle_camera_for_flyable", bAllowGTAIV_vehicle_camera_for_bike);
 
 }
 
@@ -640,6 +644,7 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 	BlingMenuAddFloat("ClippyCamera", "x_offset_car", &x_offset, NULL, 0.05f, -5.f, 5.f);
 	BlingMenuAddBool("ClippyCamera", "bGTAIV_vehicle_camera", &bGTAIV_vehicle_camera, NULL);
 	BlingMenuAddBool("ClippyCamera", "bAllowGTAIV_vehicle_camera_for_flyable", &bAllowGTAIV_vehicle_camera_for_flyable, NULL);
+	BlingMenuAddBool("ClippyCamera", "bAllowGTAIV_vehicle_camera_for_bike", &bAllowGTAIV_vehicle_camera_for_bike, NULL);
 	BlingMenuAddFunc("ClippyCamera", "Save (some) to .ini", []() {
 		// Basic shake settings
 		SetValue("Values", "bCamShake", bCamShake);
@@ -663,6 +668,7 @@ DWORD WINAPI LateBM(LPVOID lpParameter)
 		SetDoubleValue("Values", "x_offset", x_offset);
 		SetValue("Values", "bGTAIV_vehicle_camera", bGTAIV_vehicle_camera);
 		SetValue("Values", "bAllowGTAIV_vehicle_camera_for_flyable", bAllowGTAIV_vehicle_camera_for_flyable);
+		SetValue("Values", "bAllowGTAIV_vehicle_camera_for_bike", bAllowGTAIV_vehicle_camera_for_bike);
 		});
 
 	BlingMenuAddFunc("ClippyCamera", "Load from .ini", &loadnewconfig);
